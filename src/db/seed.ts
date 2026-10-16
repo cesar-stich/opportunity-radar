@@ -34,16 +34,25 @@ export function sembrar(db: DB, hoy = hoyISO()): { nuevas: number; total: number
   const ops = oportunidadesDePrueba(hoy);
   for (const op of ops) if (insertarOportunidad(db, op).nueva) nuevas++;
 
-  // Fuentes de ejemplo para la Fase 3 (inactivas hasta configurar Apify/Tavily).
-  const hayFuentes = (db.prepare('SELECT COUNT(*) AS n FROM fuentes').get() as { n: number }).n > 0;
-  if (!hayFuentes) {
-    const ins = db.prepare('INSERT INTO fuentes (nombre, tipo, url, consulta, activa) VALUES (?, ?, ?, ?, 0)');
-    ins.run('Prácticas telecom Lima', 'tavily', null, 'prácticas pre profesionales telecomunicaciones Lima');
-    ins.run('Becas IA Perú', 'tavily', null, 'becas inteligencia artificial estudiantes Perú');
-    ins.run('Hackathones Perú', 'tavily', null, 'hackathon Perú estudiantes');
-  }
+  // Fuentes que recorre `pnpm escanear` (y en la Fase 6, el escaneo diario). Se agregan las que falten por nombre,
+  // sin tocar si las activaste o desactivaste. Cada escaneo gasta 1 crédito de Tavily por búsqueda y una
+  // corrida corta de Apify por portal.
+  const ins = db.prepare(
+    `INSERT INTO fuentes (nombre, tipo, url, consulta) SELECT :nombre, :tipo, :url, :consulta
+     WHERE NOT EXISTS (SELECT 1 FROM fuentes WHERE nombre = :nombre)`,
+  );
+  for (const f of FUENTES) ins.run({ url: null, consulta: null, ...f });
   return { nuevas, total: ops.length };
 }
+
+const FUENTES = [
+  { nombre: 'Prácticas telecom Lima', tipo: 'tavily', consulta: 'prácticas pre profesionales telecomunicaciones Lima' },
+  { nombre: 'Becas IA Perú', tipo: 'tavily', consulta: 'becas inteligencia artificial estudiantes Perú' },
+  { nombre: 'Hackathones Perú', tipo: 'tavily', consulta: 'hackathon Perú estudiantes' },
+  // Portales públicos del Estado (HTML sin JavaScript; robots.txt lo permite o no existe). Una sola página por escaneo.
+  { nombre: 'PRONABEC becas internacionales', tipo: 'apify', url: 'https://www.pronabec.gob.pe/becas-de-cooperacion-internacional/' },
+  { nombre: 'OSIPTEL prácticas vigentes', tipo: 'apify', url: 'https://www.osiptel.gob.pe/vigentes-practicas/' },
+];
 
 // `pnpm seed`
 if (import.meta.url === pathToFileURL(process.argv[1] ?? '').href) {

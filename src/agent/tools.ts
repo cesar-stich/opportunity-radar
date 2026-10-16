@@ -1,9 +1,10 @@
 import { z } from 'zod';
 import type { DB } from '../db/index';
 import * as repo from '../db/repo';
-import type { MemoryStore, ToolSpec } from '../interfaces';
+import type { MemoryStore, Scraper, SearchTool, ToolSpec } from '../interfaces';
 import { ESTADOS, ETIQUETA_TIPO, TIPOS, type Oportunidad, type Perfil } from '../types';
 import { normalizar } from '../util/texto';
+import { descubrir } from './descubrimiento';
 import { puntuar, type Senales } from './scoring';
 
 // Herramientas que el LLM puede llamar. Cada una: spec (JSON Schema para el proveedor) + Zod (validar args) + ejecutar.
@@ -14,7 +15,7 @@ export type Sesion = {
   ultimaRef?: number; // última oportunidad mencionada: "esa"
 };
 
-export type Ctx = { db: DB; perfil: Perfil; memoria: MemoryStore; sesion: Sesion };
+export type Ctx = { db: DB; perfil: Perfil; memoria: MemoryStore; buscador: SearchTool; scraper: Scraper; sesion: Sesion };
 
 export type ResultadoTool = { ok: true; resumen: string; datos?: unknown } | { ok: false; error: string };
 
@@ -246,7 +247,85 @@ const redactarBorrador: Herramienta = {
   },
 };
 
-export const HERRAMIENTAS: Herramienta[] = [listar, puntuarTool, cambiarEstado, registrarFeedback, redactarBorrador];
+const buscarOportunidades: Herramienta = {
+  spec: {
+    name: 'buscar_oportunidades',
+    description:
+      'Busca oportunidades NUEVAS en internet (Tavily) y las guarda, sin duplicados, y las devuelve puntuadas. ' +
+      'Sin consulta, escanea las fuentes configuradas (búsquedas guardadas y portales vía Apify). ' +
+      'Úsala cuando el usuario pida buscar/descubrir algo nuevo; para ver lo ya guardado usa listar_oportunidades. Gasta créditos: no la repitas sin motivo.',
+    parameters: {
+      type: 'object',
+      properties: {
+        consulta: { type: 'string', description: 'Qué buscar, en español y concreto (ej. "prácticas pre profesionales telecomunicaciones Lima")' },
+      },
+    },
+  },
+  schema: z.object({ consulta: z.string().trim().min(3).optional() }),
+  async ejecutar({ consulta }, ctx) {
+    const { ids, nuevas, errores } = await descubrir(ctx, consulta);
+    const aviso = errores.length ? `\n⚠️ ${errores.join('\n⚠️ ')}` : '';
+    const s = await senales(ctx, `${consulta ?? ''} descartes y preferencias`);
+    const visibles = ids
+      .map((id) => repo.obtenerOportunidad(ctx.db, id)!)
+      .filter((o) => o.estado !== 'descartada')
+      .map((o) => {
+        const { puntaje, razones } = puntuar(o, ctx.perfil, s);
+        repo.guardarPuntaje(ctx.db, o.id, puntaje, razones);
+        return { ...o, puntaje, razones };
+      })
+      .sort((a, b) => Number(nuevas.includes(b.id)) - Number(nuevas.includes(a.id)) || b.puntaje - a.puntaje)
+      .slice(0, 8);
+
+    ctx.sesion.ultimaLista = visibles.map((o) => o.id);
+    ctx.sesion.ultimaRef = undefined;
+    if (!visibles.length) return { ok: true, resumen: `No encontré oportunidades vigentes${consulta ? ` para "${consulta}"` : ''}.${aviso}`, datos: [] };
+    const cabecera = nuevas.length
+      ? `Encontré ${nuevas.length} nueva(s) (🆕) y ${ids.length - nuevas.length} que ya tenía guardada(s):`
+      : `No hay nuevas: las ${ids.length} que encontré ya estaban guardadas.`;
+    return {
+      ok: true,
+      resumen:
+        `${cabecera}\n` +
+        visibles.map((o, i) => `${linea(o, i)}${nuevas.includes(o.id) ? ' 🆕' : ''}\n   ${o.razones.slice(0, 2).join(' · ')}\n   ${o.url}`).join('\n') +
+        aviso,
+      datos: {
+        nuevas: nuevas.length,
+        ya_guardadas: ids.length - nuevas.length,
+        errores,
+        oportunidades: visibles.map((o, i) => ({
+          posicion: i + 1,
+          id: o.id,
+          nueva: nuevas.includes(o.id),
+          titulo: o.titulo,
+          organizacion: o.organizacion,
+          tipo: o.tipo,
+          plazo: o.plazo,
+          ubicacion: o.ubicacion,
+          puntaje: o.puntaje,
+          razones: o.razones,
+          url: o.url,
+        })),
+      },
+    };
+  },
+};
+
+const enriquecerOportunidad: Herramienta = {
+  spec: {
+    name: 'enriquecer_oportunidad',
+    description: 'Investiga en la web una oportunidad guardada: qué es la organización, requisitos y noticias recientes. Gasta 1 crédito de búsqueda.',
+    parameters: { type: 'object', properties: refProps },
+  },
+  schema: RefSchema,
+  async ejecutar(args, ctx) {
+    const op = resolver(args, ctx)!;
+    const info = await ctx.buscador.enriquecer(op);
+    return { ok: true, resumen: `Sobre «${op.titulo}» (${op.organizacion}):\n${info}\n${op.url}`, datos: { id: op.id, info, url: op.url } };
+  },
+};
+
+export const HERRAMIENTAS: Herramienta[] = [listar, buscarOportunidades, enriquecerOportunidad, puntuarTool, cambiarEstado, registrarFeedback, redactarBorrador];
 
 export async function ejecutarHerramienta(nombre: string, args: unknown, ctx: Ctx): Promise<ResultadoTool> {
   const h = HERRAMIENTAS.find((x) => x.spec.name === nombre);

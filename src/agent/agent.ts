@@ -1,5 +1,5 @@
 import type { DB } from '../db/index';
-import type { LLMProvider, Mensaje, MemoryStore } from '../interfaces';
+import type { LLMProvider, Mensaje, MemoryStore, Scraper, SearchTool } from '../interfaces';
 import type { Perfil } from '../types';
 import { promptSistema } from './prompt';
 import { ejecutarHerramienta, HERRAMIENTAS, type Sesion } from './tools';
@@ -10,7 +10,7 @@ import { ejecutarHerramienta, HERRAMIENTAS, type Sesion } from './tools';
 const MAX_PASOS = 6;
 const MAX_HISTORIAL = 12;
 
-export type AgenteDeps = { db: DB; perfil: Perfil; memoria: MemoryStore; llm: LLMProvider };
+export type AgenteDeps = { db: DB; perfil: Perfil; memoria: MemoryStore; llm: LLMProvider; buscador: SearchTool; scraper: Scraper };
 
 export function crearAgente(deps: AgenteDeps) {
   const sesiones = new Map<string, Sesion>();

@@ -38,6 +38,19 @@ curl localhost:17350/health          # {"status":"ok"}
 
 Luego pon `MEMORY_MODE=real` en `.env`. Costo cero: embeddings locales (MiniLM) y Groq `gpt-oss-120b`, sin OpenAI. Para apagarlo: `docker compose down` (los recuerdos se conservan en el volumen `pgdata`).
 
+## Descubrimiento (Fase 3: Tavily + Apify)
+
+- **Tavily** (búsqueda abierta): crea tu llave gratis en https://app.tavily.com (1,000 créditos/mes, sin tarjeta; cada búsqueda cuesta 1) y ponla en `TAVILY_API_KEY`, con `TAVILY_MODE=real`.
+- **Apify** (portales sin API): crea tu cuenta en https://console.apify.com/sign-up (plan Free, US$5/mes, sin tarjeta), copia el token de https://console.apify.com/settings/integrations en `APIFY_TOKEN` y pon `APIFY_MODE=real`. La primera vez Apify te pide **aprobar una vez** los permisos del actor `apify/cheerio-scraper` (el error trae el enlace).
+
+```bash
+pnpm fuentes                       # lista las fuentes (tabla `fuentes`); `pnpm fuentes desactivar 3` / `activar 3`
+pnpm escanear                      # recorre las fuentes activas (Tavily + Apify) y guarda lo nuevo
+pnpm escanear "becas cloud Perú"   # búsqueda puntual en Tavily
+```
+
+Por chat: *"busca prácticas de telecomunicaciones en Lima"* (herramienta `buscar_oportunidades`), *"escanea las fuentes"* o *"investiga la 2"* (`enriquecer_oportunidad`). Todo se deduplica por URL y por título + organización.
+
 ## Rutas
 
 | Ruta | Qué hace |
@@ -57,10 +70,15 @@ Luego pon `MEMORY_MODE=real` en `.env`. Costo cero: embeddings locales (MiniLM) 
 | LLM mock / Gemini / Groq | ✅ mock probado · Gemini y Groq implementados, falta probarlos con llave |
 | SQLite (`node:sqlite`) | ✅ |
 | AtomicMemory | ✅ real con Docker (probado: recuerda descartes tras reiniciar) · mock en RAM |
-| Tavily / Apify | mock · real pendiente (Fase 3) |
+| Tavily | ✅ real probado con Gemini (búsqueda, plazos, sin duplicados) · mock sin llave |
+| Apify | ✅ real probado con `apify/cheerio-scraper` en PRONABEC y OSIPTEL · mock sin llave |
 | Zavu | mock · real pendiente (Fase 4) |
 | ElevenLabs | mock · real pendiente (Fase 5) |
 
 ## Pendiente
+
+- Tavily devuelve sobre todo portales agregadores (practicas.pe, Jobted…) y pocas ofertas individuales; la mayoría sale **sin plazo** (la página no lo trae en el resumen). Es un límite de la fuente, no se inventa la fecha.
+- Los portales de Apify se leen con un `pageFunction` genérico (tarjetas con título + enlace, o tablas). Un portal con JavaScript pesado necesitaría otro actor (p. ej. Playwright).
+- `enriquecer` (Tavily con `include_answer`) está implementado y con tests, pero aún no se probó con la llave real.
 
 - AtomicMemory extrae los hechos en inglés y su búsqueda semántica en español es débil (modelo local pequeño); si no encuentra nada, se lee la memoria completa.

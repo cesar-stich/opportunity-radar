@@ -194,7 +194,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 0 — Esqueleto** (2026-10-16)
 - [x] **Fase 1 — Cerebro con herramientas** (2026-10-16): funciona con el LLM mock y con **Gemini real** (probado el 2026-10-16). Groq está implementado pero falta probarlo con llave.
 - [x] **Fase 2 — Memoria** (2026-10-16): AtomicMemory real. **Modo activo: Cloud** (api.atomicstrata.ai, plan Basic: 10,000 operaciones/mes; ingest = 3, search = 1). Probado en local (Docker) y en Cloud: después de reiniciar, con SQLite vacío, una oferta nueva en "Lima Norte" baja de 76 a 46.
-- [ ] Fase 3 — Descubrimiento (Tavily / Apify)
+- [x] **Fase 3 — Descubrimiento** (2026-10-16): **Tavily real** probado con Gemini (`buscar_oportunidades`: guarda, puntúa y no duplica al repetir) y **Apify real** (`apify/cheerio-scraper`) probado en PRONABEC y OSIPTEL. `enriquecer` implementado con tests, sin probar con llave real. 27 tests.
 - [ ] Fase 4 — Canal (Zavu WhatsApp → Telegram)
 - [ ] Fase 5 — Voz (ElevenLabs)
 - [ ] Fase 6 — n8n (`/jobs/*` ya exige `JOBS_TOKEN`; hoy responde 501)
@@ -203,7 +203,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 
 ### Orden sugerido (cambio respecto al plan original)
 
-Siguiente: 1) Fase 3 (Tavily, datos reales) → 2) Fase 4 (canal) → 3) Fase 6 (avisos) → 4) Fase 5 (voz) → 5) Fases 7 y 8.
+Siguiente: 1) Fase 4 (canal) → 2) Fase 6 (avisos; `/jobs/escanear` ya puede llamar a `descubrir()`) → 3) Fase 5 (voz) → 4) Fases 7 y 8.
 
 ### Decisiones tomadas
 
@@ -218,8 +218,17 @@ Siguiente: 1) Fase 3 (Tavily, datos reales) → 2) Fase 4 (canal) → 3) Fase 6 
 | 2026-10-16 | AtomicMemory: `docker-compose.yml` propio, basado en el oficial, con `EMBEDDING_PROVIDER=transformers` (MiniLM, 384 dim) y `LLM_PROVIDER=groq` / `openai/gpt-oss-120b` | Por defecto usa OpenAI (de pago). `llama-3.1-8b-instant` (el de su doc) ya no existe en Groq, y `gpt-oss-20b` devolvía JSON inválido. Puerto 17350; Postgres en 5433. |
 | 2026-10-16 | API de AtomicMemory verificada contra la imagen 1.2.2: `POST /v1/memories/ingest {user_id, conversation, source_site}`, `POST /v1/memories/search {user_id, query, limit}`, `GET /v1/memories/list`. Auth: `Bearer` con `CORE_API_KEY` | La doc web no traía los esquemas, así que la probé contra el servicio real. Extrae hechos en inglés: el puntaje también reconoce "not interested". Si la búsqueda no encuentra nada, se lee la lista completa. Si la memoria cae, el agente sigue con SQLite. |
 | 2026-10-16 | AtomicMemory **Cloud** (`https://api.atomicstrata.ai` + llave `amc_…`) como modo principal; Docker local queda de respaldo | Cesar tiene créditos de AtomicMemory como perk del hackathon. Según la doc, la API `/v1/memories/*` es la misma: solo cambian la URL y la llave, sin cambiar código. No depende de Docker y funciona cuando se despliegue (Fase 7). |
+| 2026-10-16 | Tavily: `POST https://api.tavily.com/search`, `Authorization: Bearer`, siempre `search_depth: basic` (1 crédito; `advanced` = 2), `country: peru`, `include_raw_content: markdown` (probado: sigue costando 1 crédito), `exclude_domains` con bolsas de empleo y redes sociales | Doc oficial verificada el 2026-10-16: 1,000 créditos/mes gratis sin tarjeta. Sin excluir dominios, Tavily devuelve páginas de búsqueda de Indeed/LinkedIn/Computrabajo (no son ofertas); al excluirlas salen páginas de convocatorias de instituciones y agregadores. Cada llamada imprime los créditos usados. |
+| 2026-10-16 | De texto libre a `OportunidadInput` con **heurísticas deterministas** (`src/util/extraer.ts`), no con el LLM | Lo más simple que funciona: sin tokens, testeable sin red y no depende de que Gemini esté saturado. Plazo = fecha cerca de palabras como "hasta/plazo/cierre" (si el contenido completo tiene más de 2 fechas se considera un listado y queda `null`); tipo por palabras clave; ubicación por lista de ciudades. Si no es seguro, se deja vacío en vez de inventar. Las vencidas se descartan. |
+| 2026-10-16 | Apify: actor público `apify/cheerio-scraper` por `POST /v2/actors/apify~cheerio-scraper/run-sync-get-dataset-items` con `Bearer` (la doc usa `/actors/`, no `/acts/`) | Actor gratis (solo se paga el uso de plataforma; Free = US$5/mes sin tarjeta). Sin crear un actor propio: un `pageFunction` genérico lee tarjetas (título + enlace) o filas de tabla. Una sola página por fuente, sin seguir enlaces (frecuencia baja). Requisitos descubiertos al probar: aprobar permisos del actor una vez en la consola (403 `full-permission-actor-not-approved`) y `proxyConfiguration` es obligatorio. |
+| 2026-10-16 | Portales de Apify: PRONABEC becas internacionales y OSIPTEL prácticas vigentes | HTML sin JavaScript, `robots.txt` permite o no existe, datos públicos. Sembrados en `fuentes` junto a 3 consultas de Tavily, ahora **activas** (antes inactivas). |
+| 2026-10-16 | Descubrimiento en `src/agent/descubrimiento.ts`, compartido por la herramienta `buscar_oportunidades`, `pnpm escanear` y (Fase 6) `/jobs/escanear` | Una fuente caída no detiene a las demás; los errores se avisan en la respuesta. |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)
 
-Zavu (sandbox de WhatsApp y plantillas), Maritime, Qatom, ElevenLabs, Apify y Tavily: límites del plan gratis.
+Zavu (sandbox de WhatsApp y plantillas), Maritime, Qatom y ElevenLabs: límites del plan gratis. (Tavily y Apify ya verificados en la Fase 3.)
+
+### Límites conocidos de la Fase 3
+
+Tavily trae sobre todo agregadores y la mayoría de resultados salen sin plazo; los portales de Apify dependen de que su HTML siga igual. Detalle en "Pendiente" del README.

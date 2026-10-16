@@ -50,12 +50,17 @@ export class MockLLM implements LLMProvider {
     const t = normalizar(original);
     const pos = posicion(t);
 
+    // "busca prácticas de telecom en Lima" → búsqueda nueva en la web; "escanea" → fuentes configuradas.
+    if (/escanea|revisa las fuentes|busca (algo )?nuevo/.test(t)) return llamar('buscar_oportunidades', {});
+    const VERBO_BUSCAR = /^[\s¿¡]*(?:radar,?\s*)?(?:b[uú]scame|busca|encu[eé]ntrame|encuentra|descubre)\s+/i;
+    if (VERBO_BUSCAR.test(original)) return llamar('buscar_oportunidades', { consulta: original.replace(VERBO_BUSCAR, '').replace(/[?¿!.]+\s*$/, '') });
+    if (/investiga|averigua|cuentame (mas|de)|mas info|que se sabe/.test(t)) return llamar('enriquecer_oportunidad', { posicion: pos });
     if (/descart|no me interesa|no me gusta|quitala|borrala/.test(t))
       return llamar('registrar_feedback', { accion: 'descartar', motivo: original, posicion: pos });
     if (/borrador|preparame|postular|redacta|mensaje para/.test(t)) return llamar('redactar_borrador', { posicion: pos });
     if (/me interesa|me gusta|guardala|me late/.test(t)) return llamar('registrar_feedback', { accion: 'aceptar', motivo: original, posicion: pos });
     if (/puntua|puntaje|que tal|detalle/.test(t) && pos) return llamar('puntuar_oportunidad', { posicion: pos });
-    if (/que hay|busca|muestra|lista|dame|tienes|hay algo/.test(t) || tipo(t)) {
+    if (/que hay|muestra|lista|dame|tienes|hay algo/.test(t) || tipo(t)) {
       const texto = t.match(/\ben ([a-z ]{3,30}?)\??$/)?.[1]?.trim();
       return llamar('listar_oportunidades', { tipo: tipo(t), texto });
     }

@@ -110,3 +110,13 @@ export function estadisticas(db: DB, hoy = hoyISO()) {
     ),
   };
 }
+
+export type Fuente = { id: number; nombre: string; tipo: 'apify' | 'tavily' | 'manual'; url: string | null; consulta: string | null; activa: number };
+
+export function listarFuentes(db: DB, soloActivas = false): Fuente[] {
+  return db.prepare(`SELECT * FROM fuentes ${soloActivas ? 'WHERE activa = 1' : ''} ORDER BY id`).all() as Fuente[];
+}
+
+export function activarFuente(db: DB, id: number, activa: boolean): boolean {
+  return db.prepare('UPDATE fuentes SET activa = ? WHERE id = ?').run(activa ? 1 : 0, id).changes > 0;
+}
