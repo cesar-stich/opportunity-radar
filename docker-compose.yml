@@ -1,0 +1,49 @@
+# AtomicMemory (memoria semántica del agente): core HTTP + Postgres con pgvector.
+# Basado en packages/core/docker-compose.image.yml del repo oficial (atomicstrata/atomicmemory).
+# Costo cero: embeddings locales (transformers) y Groq como LLM de extracción. Sin OpenAI.
+services:
+  postgres:
+    image: pgvector/pgvector:pg17
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: atomicmemory
+      POSTGRES_PASSWORD: atomicmemory
+      POSTGRES_DB: atomicmemory
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-q", "-d", "atomicmemory", "-U", "atomicmemory"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  atomicmemory:
+    image: ghcr.io/atomicstrata/atomicmemory-core:latest
+    restart: unless-stopped
+    ports:
+      - "17350:17350"
+    environment:
+      DATABASE_URL: postgresql://atomicmemory:atomicmemory@postgres:5432/atomicmemory
+      PORT: "17350"
+      RAW_STORAGE_DEPLOYMENT_ENV: local
+      EMBEDDING_PROVIDER: transformers
+      EMBEDDING_MODEL: Xenova/all-MiniLM-L6-v2
+      EMBEDDING_DIMENSIONS: "384"
+      LLM_PROVIDER: groq
+      LLM_MODEL: openai/gpt-oss-120b
+      # Se leen del .env de Radar (no se suben a git)
+      GROQ_API_KEY: ${GROQ_API_KEY}
+      CORE_API_KEY: ${ATOMICMEMORY_API_KEY:-radar-local-dev}
+    volumes:
+      - amstate:/var/lib/atomicmemory/state
+      - amcache:/root/.cache
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+volumes:
+  pgdata:
+  amstate:
+  amcache:

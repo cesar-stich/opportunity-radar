@@ -25,19 +25,47 @@ export class MockMemory implements MemoryStore {
   }
 }
 
-// Real: pendiente Fase 2 (core HTTP de AtomicMemory + Postgres/pgvector en Docker).
+// Real: core HTTP de AtomicMemory (docker-compose.yml). API verificada contra la imagen 1.2.2 el 2026-10-16:
+//   POST /v1/memories/ingest  { user_id, conversation, source_site } → extrae hechos con su LLM y los guarda
+//   POST /v1/memories/search  { user_id, query, limit }             → { memories: [{ content }] }
+//   GET  /v1/memories/list?user_id=                                  → { memories: [{ content }] }
+// Ojo: extrae los hechos en inglés ("User is not interested in ...").
 export class AtomicMemoryStore implements MemoryStore {
   nombre = 'atomicmemory';
   constructor(
     private url: string,
-    private apiKey?: string,
+    private apiKey = 'radar-local-dev',
+    private usuario = 'radar-cesar',
   ) {}
 
-  async guardar(): Promise<void> {
-    throw new Error('AtomicMemory real: pendiente Fase 2 (usa MEMORY_MODE=mock)');
+  private async pedir(ruta: string, init: RequestInit = {}) {
+    const res = await fetch(`${this.url}${ruta}`, {
+      ...init,
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${this.apiKey}` },
+    });
+    if (!res.ok) throw new Error(`AtomicMemory ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    return (await res.json()) as { memories?: { content: string }[] };
   }
 
-  async buscar(): Promise<Recuerdo[]> {
-    throw new Error('AtomicMemory real: pendiente Fase 2 (usa MEMORY_MODE=mock)');
+  async guardar(texto: string, meta?: Record<string, string>) {
+    // Le damos contexto en la "conversación" para que el extractor entienda qué significa el feedback.
+    const contexto = meta?.oportunidad ? ` (sobre la oportunidad "${meta.oportunidad}" de ${meta.organizacion ?? '?'})` : '';
+    const accion = meta?.accion === 'descartar' ? 'Descarto esto' : meta?.accion === 'aceptar' ? 'Me interesa esto' : 'Nota';
+    await this.pedir('/v1/memories/ingest', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: this.usuario, conversation: `user: ${accion}${contexto}: ${texto}`, source_site: 'radar' }),
+    });
+  }
+
+  async buscar(consulta: string, limite = 10): Promise<Recuerdo[]> {
+    const r = await this.pedir('/v1/memories/search', {
+      method: 'POST',
+      body: JSON.stringify({ user_id: this.usuario, query: consulta, limit: limite }),
+    });
+    let memorias = r.memories ?? [];
+    // El modelo de embeddings local es pequeño: si la búsqueda no encuentra nada, la memoria personal
+    // es corta y podemos leerla completa.
+    if (!memorias.length) memorias = (await this.pedir(`/v1/memories/list?user_id=${this.usuario}&limit=${limite}`)).memories ?? [];
+    return memorias.slice(0, limite).map((m) => ({ texto: m.content }));
   }
 }

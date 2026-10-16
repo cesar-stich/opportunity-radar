@@ -27,6 +27,17 @@ curl -X POST localhost:3000/ask -H "content-type: application/json" -d '{"text":
 
 Para volver al modo sin llaves, pon `LLM_PROVIDER=mock`.
 
+## Memoria real (AtomicMemory, Fase 2)
+
+Requiere Docker Desktop corriendo y `GROQ_API_KEY` en `.env` (AtomicMemory la usa para extraer hechos).
+
+```bash
+docker compose up -d                 # Postgres+pgvector y AtomicMemory en http://localhost:17350
+curl localhost:17350/health          # {"status":"ok"}
+```
+
+Luego pon `MEMORY_MODE=real` en `.env`. Costo cero: embeddings locales (MiniLM) y Groq `gpt-oss-120b`, sin OpenAI. Para apagarlo: `docker compose down` (los recuerdos se conservan en el volumen `pgdata`).
+
 ## Rutas
 
 | Ruta | Qué hace |
@@ -45,11 +56,11 @@ Para volver al modo sin llaves, pon `LLM_PROVIDER=mock`.
 | --- | --- |
 | LLM mock / Gemini / Groq | ✅ mock probado · Gemini y Groq implementados, falta probarlos con llave |
 | SQLite (`node:sqlite`) | ✅ |
-| AtomicMemory | mock (en RAM) · real pendiente (Fase 2, requiere Docker) |
+| AtomicMemory | ✅ real con Docker (probado: recuerda descartes tras reiniciar) · mock en RAM |
 | Tavily / Apify | mock · real pendiente (Fase 3) |
 | Zavu | mock · real pendiente (Fase 4) |
 | ElevenLabs | mock · real pendiente (Fase 5) |
 
 ## Pendiente
 
-- Docker no está instalado: necesario para AtomicMemory (Fase 2) y para el despliegue (Fase 7).
+- AtomicMemory extrae los hechos en inglés y su búsqueda semántica en español es débil (modelo local pequeño); si no encuentra nada, se lee la memoria completa.

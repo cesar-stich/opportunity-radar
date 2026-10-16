@@ -118,7 +118,7 @@ ZAVU_API_KEY=
 ZAVU_WEBHOOK_SECRET=
 ELEVENLABS_API_KEY=
 ELEVENLABS_VOICE_ID=
-ATOMICMEMORY_URL=http://localhost:8080   # puerto por confirmar en Fase 2
+ATOMICMEMORY_URL=http://localhost:17350
 ATOMICMEMORY_API_KEY=
 TAVILY_API_KEY=
 APIFY_TOKEN=
@@ -193,7 +193,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 
 - [x] **Fase 0 — Esqueleto** (2026-10-16)
 - [x] **Fase 1 — Cerebro con herramientas** (2026-10-16): funciona con el LLM mock y con **Gemini real** (probado el 2026-10-16). Groq está implementado pero falta probarlo con llave.
-- [ ] Fase 2 — Memoria (AtomicMemory). ⚠️ Requiere Docker, que **no está instalado** en esta laptop.
+- [x] **Fase 2 — Memoria** (2026-10-16): AtomicMemory real en Docker. Criterio cumplido: después de reiniciar, con SQLite vacío, una oferta nueva en "Lima Norte" bajó de 76 a 46 por un descarte recordado.
 - [ ] Fase 3 — Descubrimiento (Tavily / Apify)
 - [ ] Fase 4 — Canal (Zavu WhatsApp → Telegram)
 - [ ] Fase 5 — Voz (ElevenLabs)
@@ -203,7 +203,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 
 ### Orden sugerido (cambio respecto al plan original)
 
-Por falta de tiempo y de Docker: 1) poner la llave de Gemini y probar el cerebro real → 2) Fase 3 (Tavily, que da datos reales) → 3) Fase 4 (canal) → 4) Fase 6 (avisos) → 5) Fase 2 cuando haya Docker. La memoria mock y el feedback en SQLite ya cubren el "aprende de mi feedback" en la demo.
+Siguiente: 1) Fase 3 (Tavily, datos reales) → 2) Fase 4 (canal) → 3) Fase 6 (avisos) → 4) Fase 5 (voz) → 5) Fases 7 y 8.
 
 ### Decisiones tomadas
 
@@ -215,8 +215,10 @@ Por falta de tiempo y de Docker: 1) poner la llave de Gemini y probar el cerebro
 | 2026-10-16 | Puntaje determinista, no hecho por el LLM | Es testeable, no gasta tokens y `/match` usa el mismo cálculo. |
 | 2026-10-16 | El historial de sesión guarda solo texto (no las llamadas a herramientas) | Contexto corto y sin problemas al cambiar de proveedor. "La 3" se resuelve con `ultimaLista` de la sesión. |
 | 2026-10-16 | Llave de Gemini probada: funciona con herramientas. En `.env`: `LLM_MODEL=gemini-3.5-flash-lite` | `gemini-3.8-flash` daba 503 (saturado) y `gemini-2.5-flash` ya no está disponible para usuarios nuevos (404). El proveedor reintenta 2 veces ante 503/429. Si sigue saturado, usar Groq de respaldo. |
+| 2026-10-16 | AtomicMemory: `docker-compose.yml` propio, basado en el oficial, con `EMBEDDING_PROVIDER=transformers` (MiniLM, 384 dim) y `LLM_PROVIDER=groq` / `openai/gpt-oss-120b` | Por defecto usa OpenAI (de pago). `llama-3.1-8b-instant` (el de su doc) ya no existe en Groq, y `gpt-oss-20b` devolvía JSON inválido. Puerto 17350; Postgres en 5433. |
+| 2026-10-16 | API de AtomicMemory verificada contra la imagen 1.2.2: `POST /v1/memories/ingest {user_id, conversation, source_site}`, `POST /v1/memories/search {user_id, query, limit}`, `GET /v1/memories/list`. Auth: `Bearer` con `CORE_API_KEY` | La doc web no traía los esquemas, así que la probé contra el servicio real. Extrae hechos en inglés: el puntaje también reconoce "not interested". Si la búsqueda no encuentra nada, se lee la lista completa. Si la memoria cae, el agente sigue con SQLite. |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)
 
-Zavu (sandbox de WhatsApp y plantillas), AtomicMemory (API en preview), Maritime, Qatom, ElevenLabs, Apify y Tavily: límites del plan gratis.
+Zavu (sandbox de WhatsApp y plantillas), Maritime, Qatom, ElevenLabs, Apify y Tavily: límites del plan gratis.

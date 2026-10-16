@@ -54,10 +54,14 @@ function resolver(ref: z.infer<typeof RefSchema>, ctx: Ctx, obligatorio = true):
 
 // Lo que el agente sabe de mis gustos: feedback estructurado (SQLite) + memoria semántica.
 async function senales(ctx: Ctx, consulta: string): Promise<Senales> {
-  return {
-    feedback: repo.listarFeedback(ctx.db),
-    recuerdos: await ctx.memoria.buscar(consulta, 20),
-  };
+  let recuerdos: Senales['recuerdos'] = [];
+  try {
+    recuerdos = await ctx.memoria.buscar(consulta, 20);
+  } catch (e) {
+    // Si la memoria semántica está caída, seguimos con el feedback de SQLite.
+    console.warn(`[memoria] ${(e as Error).message}`);
+  }
+  return { feedback: repo.listarFeedback(ctx.db), recuerdos };
 }
 
 const linea = (o: Oportunidad, i?: number) =>
@@ -188,11 +192,15 @@ const registrarFeedback: Herramienta = {
     repo.insertarFeedback(ctx.db, { oportunidad_id: op?.id ?? null, accion: args.accion, motivo: args.motivo });
     if (op && args.accion === 'descartar') repo.cambiarEstado(ctx.db, op.id, 'descartada');
     if (op && args.accion === 'aceptar' && op.estado === 'nueva') repo.cambiarEstado(ctx.db, op.id, 'interesa');
-    await ctx.memoria.guardar(args.motivo || `${args.accion}: ${op?.titulo ?? ''}`, {
-      tipo: 'feedback',
-      accion: args.accion,
-      ...(op ? { oportunidad: op.titulo, organizacion: op.organizacion } : {}),
-    });
+    try {
+      await ctx.memoria.guardar(args.motivo || `${args.accion}: ${op?.titulo ?? ''}`, {
+        tipo: 'feedback',
+        accion: args.accion,
+        ...(op ? { oportunidad: op.titulo, organizacion: op.organizacion } : {}),
+      });
+    } catch (e) {
+      console.warn(`[memoria] no se pudo guardar (queda en SQLite): ${(e as Error).message}`);
+    }
     const sobre = op ? `«${op.titulo}»` : 'tus preferencias';
     const efecto = { descartar: 'La saqué del tablero y bajaré las parecidas.', aceptar: 'La marqué como "interesa".', comentario: '' };
     return { ok: true, resumen: `Anotado sobre ${sobre}: "${args.motivo}". ${efecto[args.accion as keyof typeof efecto]}`.trim() };

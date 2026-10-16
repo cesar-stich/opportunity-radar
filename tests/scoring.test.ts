@@ -43,4 +43,12 @@ describe('puntuar', () => {
     const banca = puntuar({ ...base, descripcion: 'Dashboards para banca' }, perfil, senales, HOY);
     expect(banca.razones.join(' ')).toMatch(/descartaste/);
   });
+
+  it('entiende los hechos que AtomicMemory extrae en inglés', () => {
+    const senales = { feedback: [], recuerdos: [{ texto: 'As of October 16 2026, user is not interested in Lima Norte.' }] };
+    const norte = puntuar({ ...base, ubicacion: 'Lima Norte (Comas)' }, perfil, senales, HOY);
+    const centro = puntuar(base, perfil, senales, HOY);
+    expect(norte.puntaje).toBeLessThan(centro.puntaje);
+    expect(centro.razones.join(' ')).not.toMatch(/descartaste/);
+  });
 });

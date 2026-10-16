@@ -34,7 +34,7 @@ export function crearDeps(env: Env, extra: Partial<Deps> = {}): Deps {
     db: extra.db ?? abrirDb(env.DB_PATH),
     perfil: extra.perfil ?? cargarPerfil(),
     llm: extra.llm ?? crearLLM(env),
-    memoria: extra.memoria ?? (env.MEMORY_MODE === 'real' ? new AtomicMemoryStore(env.ATOMICMEMORY_URL ?? '', env.ATOMICMEMORY_API_KEY) : new MockMemory()),
+    memoria: extra.memoria ?? (env.MEMORY_MODE === 'real' ? new AtomicMemoryStore(env.ATOMICMEMORY_URL ?? 'http://localhost:17350', env.ATOMICMEMORY_API_KEY) : new MockMemory()),
     canal: extra.canal ?? (env.CHANNEL === 'mock' || env.ZAVU_MODE === 'mock' ? new MockChannel() : new ZavuChannel(env.CHANNEL, env.ZAVU_API_KEY, env.ZAVU_WEBHOOK_SECRET)),
     voz: extra.voz ?? (env.VOICE_MODE === 'real' ? new ElevenLabsVoice(env.ELEVENLABS_API_KEY, env.ELEVENLABS_VOICE_ID) : new MockVoice()),
     buscador: extra.buscador ?? (env.TAVILY_MODE === 'real' ? new TavilySearch(env.TAVILY_API_KEY) : new MockSearch()),

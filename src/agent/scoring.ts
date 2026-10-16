@@ -25,7 +25,8 @@ const SINONIMOS: Record<string, string[]> = {
   datos: ['data', 'analytics', 'analitica'],
 };
 
-const PATRON_NEGATIVO = /no me interesa|no me gusta|no quiero|descart|evitar|paso de/;
+// Español (feedback directo) e inglés (AtomicMemory guarda los hechos extraídos en inglés).
+const PATRON_NEGATIVO = /no me interesa|no me gusta|no quiero|descart|evitar|paso de|not interested|discard|does not want|doesn't want|dislike|avoid/;
 
 export function puntuar(
   entrada: ParaPuntuar,
@@ -91,7 +92,8 @@ export function puntuar(
   });
   if (parecido) {
     p -= 30;
-    razones.push(`Se parece a algo que descartaste: "${parecido}"`);
+    const cita = parecido.length > 70 ? `${parecido.slice(0, 67)}…` : parecido;
+    razones.push(`Se parece a algo que descartaste: "${cita}"`);
   }
 
   const orgDescartada =

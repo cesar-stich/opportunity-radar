@@ -14,7 +14,9 @@ const STOP = new Set(
   solo tampoco nunca tengo tiempo numero primera segunda tercera cuarta quinta esas estas esos estos como cuando donde
   sobre estan este esta esto otra otras otro otros quiero gusta gustan interesa interesan descarta descartar descartala
   descartalo descarte quita quitala borra borrala nadie algo alguna algun todas todos cual cuales mismo misma tambien
-  aqui alla bueno buena malo mala hola chau creo parece`.split(/\s+/),
+  aqui alla bueno buena malo mala hola chau creo parece
+  user users interested offer offers opportunity opportunities discards discarded practice that they with from about this
+  those these want wants does dislikes avoid avoids reports`.split(/\s+/),
 );
 
 // Palabras significativas de una frase (para comparar feedback con oportunidades).
