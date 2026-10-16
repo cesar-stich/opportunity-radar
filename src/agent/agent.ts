@@ -45,7 +45,15 @@ export function crearAgente(deps: AgenteDeps) {
     return { respuesta, herramientas: usadas };
   }
 
-  return { responder };
+  // Tras un aviso proactivo, "descarta la 2" debe referirse a la lista que se le mandó al usuario.
+  function establecerLista(usuario: string, ids: number[]) {
+    const sesion = sesiones.get(usuario) ?? { historial: [], ultimaLista: [] };
+    sesion.ultimaLista = ids;
+    sesion.ultimaRef = undefined;
+    sesiones.set(usuario, sesion);
+  }
+
+  return { responder, establecerLista };
 }
 
 export type Agente = ReturnType<typeof crearAgente>;

@@ -45,6 +45,14 @@ CREATE TABLE IF NOT EXISTS postulaciones (
   actualizado_en TEXT NOT NULL DEFAULT (datetime('now'))
 );
 
+-- Qué avisos ya se mandaron (uno por oportunidad y tipo) para no repetirlos en cada escaneo.
+CREATE TABLE IF NOT EXISTS avisos (
+  oportunidad_id INTEGER NOT NULL REFERENCES oportunidades(id),
+  tipo TEXT NOT NULL CHECK (tipo IN ('nueva', 'plazo')),
+  creado_en TEXT NOT NULL DEFAULT (datetime('now')),
+  PRIMARY KEY (oportunidad_id, tipo)
+);
+
 CREATE TABLE IF NOT EXISTS feedback (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   oportunidad_id INTEGER REFERENCES oportunidades(id),

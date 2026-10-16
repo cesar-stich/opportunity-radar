@@ -6,6 +6,7 @@ import { puntuar } from './agent/scoring';
 import * as repo from './db/repo';
 import type { Deps } from './deps';
 import { FirmaInvalida } from './channels/zavu';
+import { JOBS, type NombreJob } from './jobs';
 import { crearMensajeria } from './mensajeria';
 import { ESTADOS, ParaPuntuarSchema, PerfilSchema, TIPOS } from './types';
 
@@ -74,7 +75,17 @@ export function crearApp(deps: Deps) {
     if (!token || c.req.header('authorization') !== `Bearer ${token}`) return c.json({ error: 'No autorizado' }, 401);
     await next();
   });
-  app.post('/jobs/:job', (c) => c.json({ error: `Job "${c.req.param('job')}": pendiente Fase 6` }, 501));
+  app.post('/jobs/:job', async (c) => {
+    const nombre = c.req.param('job');
+    if (!(nombre in JOBS)) return c.json({ error: `Job desconocido: ${nombre}`, disponibles: Object.keys(JOBS) }, 404);
+    try {
+      const r = await JOBS[nombre as NombreJob](deps, agente);
+      return c.json(r, r.ok ? 200 : 409);
+    } catch (e) {
+      console.error(`[job ${nombre}]`, e);
+      return c.json({ ok: false, error: (e as Error).message }, 500);
+    }
+  });
 
   // Mensajes entrantes (WhatsApp o Telegram vía Zavu). Se contesta 200 al instante y se atiende en segundo plano.
   app.post('/webhook/zavu', async (c) => {

@@ -54,7 +54,7 @@ function resolver(ref: z.infer<typeof RefSchema>, ctx: Ctx, obligatorio = true):
 }
 
 // Lo que el agente sabe de mis gustos: feedback estructurado (SQLite) + memoria semántica.
-async function senales(ctx: Ctx, consulta: string): Promise<Senales> {
+export async function senales(ctx: Pick<Ctx, 'db' | 'memoria'>, consulta: string): Promise<Senales> {
   let recuerdos: Senales['recuerdos'] = [];
   try {
     recuerdos = await ctx.memoria.buscar(consulta, 20);
@@ -65,7 +65,7 @@ async function senales(ctx: Ctx, consulta: string): Promise<Senales> {
   return { feedback: repo.listarFeedback(ctx.db), recuerdos };
 }
 
-const linea = (o: Oportunidad, i?: number) =>
+export const linea = (o: Oportunidad, i?: number) =>
   `${i !== undefined ? `${i + 1}. ` : ''}[${o.puntaje ?? '?'}/100] ${o.titulo} — ${o.organizacion || 's/org'} ` +
   `(${ETIQUETA_TIPO[o.tipo]}, ${o.plazo ? `cierra ${o.plazo}` : 'sin plazo'})`;
 

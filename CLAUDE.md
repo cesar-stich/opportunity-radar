@@ -197,13 +197,13 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 3 — Descubrimiento** (2026-10-16): **Tavily real** probado con Gemini (`buscar_oportunidades`: guarda, puntúa y no duplica al repetir) y **Apify real** (`apify/cheerio-scraper`) probado en PRONABEC y OSIPTEL. `enriquecer` implementado con tests, sin probar con llave real. 27 tests.
 - [x] **Fase 4 — Canal** (2026-10-16): `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
 - [ ] Fase 5 — Voz (ElevenLabs)
-- [ ] Fase 6 — n8n (`/jobs/*` ya exige `JOBS_TOKEN`; hoy responde 501)
+- [x] **Fase 6 — n8n** (2026-10-16): jobs `escanear`, `recordar-plazos` y `resumen-semanal` con umbral y sin avisos repetidos; 3 workflows en `n8n/`. 53 tests con mocks. **Falta importarlos en n8n y probar el aviso real** (depende del canal de la Fase 4 y de una URL pública). El resumen en audio queda para la Fase 5.
 - [ ] Fase 7 — Despliegue (Maritime)
 - [ ] Fase 8 — Panel y monetización (`/api/*` y `/match` ya funcionan; faltan `dashboard/PROMPT.md` y `deploy/qatom.md`)
 
 ### Orden sugerido (cambio respecto al plan original)
 
-Siguiente: 1) Probar la Fase 4 con la cuenta real de Zavu → 2) Fase 6 (avisos; `/jobs/escanear` ya puede llamar a `descubrir()`) → 3) Fase 5 (voz) → 4) Fases 7 y 8.
+Siguiente: 1) Fase 5 (voz) → 2) Fase 7 (despliegue, da la URL pública) → 3) Fase 8 (panel y `/match`) → 4) Conectar y probar todo con las cuentas reales (Zavu, n8n) ya con la URL de Maritime.
 
 ### Decisiones tomadas
 
@@ -230,6 +230,8 @@ Siguiente: 1) Probar la Fase 4 con la cuenta real de Zavu → 2) Fase 6 (avisos;
 | 2026-10-16 | Respuestas del LLM convertidas a texto plano antes de enviar (`src/util/formato.ts`; WhatsApp conserva `*negrita*`) y partidas en trozos de 3500 caracteres | El LLM escribe Markdown (`**x**`, `[t](url)`) que no se ve igual en cada canal; la doc de Zavu no garantiza su formato en Telegram. |
 | 2026-10-16 | Regla 8 (confirmación explícita): hoy **ninguna herramienta tiene efecto externo** (solo borradores y datos internos), así que no hay nada que confirmar todavía | La compuerta de confirmación se agrega cuando exista una acción con efecto (p. ej. enviar un correo). Hasta entonces el prompt prohíbe decir que algo se envió. |
 | 2026-10-16 | Pruebas: **no se gastan créditos ni llamadas reales** de Tavily/LLM/Zavu para probar; se integra y se prueba con mocks, y Cesar valida con su cuenta | Indicación de Cesar durante la Fase 4. |
+| 2026-10-16 | Lógica de los avisos en `src/jobs.ts`; tabla nueva `avisos (oportunidad_id, tipo)` para no repetir | n8n solo dispara. El escaneo avisa solo las nuevas con puntaje ≥ `NOTIFY_MIN_SCORE`; el recordatorio avisa una vez lo que está en "interesa" (o es "nueva" con puntaje alto) y cierra en ≤ 3 días. Tras un aviso se fija la lista de la sesión para que "descarta la 2" funcione. |
+| 2026-10-16 | Workflows de n8n con el token como texto de relleno (`CAMBIA_ESTE_TOKEN`) y URL de relleno | No subir secretos a git; n8n puede bloquear `$env` en sus nodos. El JSON sigue el formato de exportación de n8n pero la doc oficial no lista los nombres internos de campos, así que no está validado con una instancia real. |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)

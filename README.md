@@ -73,6 +73,22 @@ ALLOWED_SENDERS=          # vacío al principio
 
 Límites del plan Free de Zavu (doc del 2026-10-16): 2,000 mensajes/mes entre WhatsApp y Telegram (cuentan también los entrantes) y 250 conversacionales por día una vez verificada la cuenta (100/día sin verificar: se verifica con identidad o agregando un método de pago, "nothing is charged").
 
+## Avisos automáticos (Fase 6: n8n)
+
+El agente avisa **solo** lo que vale la pena (puntaje ≥ `NOTIFY_MIN_SCORE`, 70 por defecto) y nunca repite un aviso. Los avisos llegan al primer ID de `ALLOWED_SENDERS`. n8n solo dispara; la lógica está en `src/jobs.ts`.
+
+| Job | Qué hace | Cron (Lima) |
+| --- | --- | --- |
+| `POST /jobs/escanear` | Recorre las fuentes activas y avisa las nuevas que superan el umbral | `0 8 * * *` |
+| `POST /jobs/recordar-plazos` | Avisa una vez lo que te interesa (o puntúa alto) y cierra en ≤ 3 días | `0 9 * * *` |
+| `POST /jobs/resumen-semanal` | Resumen de las mejores y cuántas cierran en 7 días | `0 19 * * 0` |
+
+Cada job exige `Authorization: Bearer $JOBS_TOKEN` (pon un valor largo y secreto en `.env`) y responde `{ ok, avisados, detalle }`; si no hay a quién avisar responde 409. Tras un aviso puedes contestar "descarta la 2" y se entiende a cuál te refieres.
+
+Probar sin n8n (mock): `curl -X POST localhost:3000/jobs/escanear -H "authorization: Bearer $JOBS_TOKEN"`.
+
+**n8n (gratis, self-hosted o Cloud con trial):** importa `n8n/*.json` (Workflows → Import from File). En cada uno cambia en el nodo HTTP la URL `https://TU-URL-PUBLICA` por la de tu servidor y `CAMBIA_ESTE_TOKEN` por tu `JOBS_TOKEN`, y **publica** el workflow (si no, el cron no corre). La zona horaria ya está en `America/Lima`. n8n necesita llegar a tu servidor por internet: con el túnel en local o con la URL de Maritime (Fase 7).
+
 ## Rutas
 
 | Ruta | Qué hace |
@@ -82,7 +98,7 @@ Límites del plan Free de Zavu (doc del 2026-10-16): 2,000 mensajes/mes entre Wh
 | `POST /match` `{ oportunidad, perfil? }` | Puntaje 0–100 y razones (servicio público para Qatom) |
 | `GET /api/oportunidades?estado=&tipo=` | Lista para el panel |
 | `GET /api/postulaciones`, `GET /api/estadisticas` | Datos para el panel |
-| `POST /jobs/*` | Disparadores de n8n (requieren `Authorization: Bearer $JOBS_TOKEN`). Pendiente: Fase 6 |
+| `POST /jobs/{escanear,recordar-plazos,resumen-semanal}` | Disparadores de n8n (requieren `Authorization: Bearer $JOBS_TOKEN`) |
 | `POST /webhook/zavu` | Mensajes entrantes de Zavu (firma `X-Zavu-Signature` obligatoria). Contesta 200 al instante y responde en segundo plano |
 
 ## Estado
@@ -98,6 +114,8 @@ Límites del plan Free de Zavu (doc del 2026-10-16): 2,000 mensajes/mes entre Wh
 | ElevenLabs | mock · real pendiente (Fase 5) |
 
 ## Pendiente
+
+- Los workflows de n8n están escritos con el formato de exportación de n8n pero **no se han importado en una instancia real**; si n8n protesta por algún campo, impórtalo y vuelve a exportarlo. El resumen semanal en **audio** llega con la Fase 5 (hoy va en texto).
 
 - Notas de voz y audios salientes por Zavu (Fase 5): la API de audio de Zavu pide una **URL pública HTTPS** del archivo, no bytes, y la doc no explica cómo bajar el audio de un mensaje entrante; hoy el bot responde que aún no entiende audios.
 - WhatsApp con Zavu: sin probar (necesita número propio sin WhatsApp). Los avisos proactivos fuera de 24 h requerirían plantillas aprobadas.

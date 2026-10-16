@@ -120,3 +120,24 @@ export function listarFuentes(db: DB, soloActivas = false): Fuente[] {
 export function activarFuente(db: DB, id: number, activa: boolean): boolean {
   return db.prepare('UPDATE fuentes SET activa = ? WHERE id = ?').run(activa ? 1 : 0, id).changes > 0;
 }
+
+// ---------- avisos (Fase 6) ----------
+
+export type TipoAviso = 'nueva' | 'plazo';
+
+export function yaAvisada(db: DB, oportunidadId: number, tipo: TipoAviso): boolean {
+  return !!db.prepare('SELECT 1 FROM avisos WHERE oportunidad_id = ? AND tipo = ?').get(oportunidadId, tipo);
+}
+
+export function marcarAvisada(db: DB, oportunidadId: number, tipo: TipoAviso): void {
+  db.prepare('INSERT OR IGNORE INTO avisos (oportunidad_id, tipo) VALUES (?, ?)').run(oportunidadId, tipo);
+}
+
+// Oportunidades vivas (no descartadas) cuyo plazo cae entre dos fechas, inclusive.
+export function oportunidadesConPlazo(db: DB, desde: string, hasta: string): Oportunidad[] {
+  return (
+    db
+      .prepare(`SELECT * FROM oportunidades WHERE estado != 'descartada' AND plazo BETWEEN ? AND ? ORDER BY plazo`)
+      .all(desde, hasta) as Fila[]
+  ).map(aOportunidad);
+}

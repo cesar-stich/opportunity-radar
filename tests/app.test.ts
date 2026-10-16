@@ -37,6 +37,6 @@ describe('servidor', () => {
 
   it('/jobs/* exige JOBS_TOKEN', async () => {
     expect((await app.fetch(post('/jobs/escanear', {}))).status).toBe(401);
-    expect((await app.fetch(post('/jobs/escanear', {}, { authorization: 'Bearer secreto' }))).status).toBe(501);
+    expect((await app.fetch(post('/jobs/inexistente', {}, { authorization: 'Bearer secreto' }))).status).toBe(404);
   });
 });
