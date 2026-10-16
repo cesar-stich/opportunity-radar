@@ -198,7 +198,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 4 — Canal** (2026-10-16): `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
 - [ ] Fase 5 — Voz (ElevenLabs)
 - [x] **Fase 6 — n8n** (2026-10-16): jobs `escanear`, `recordar-plazos` y `resumen-semanal` con umbral y sin avisos repetidos; 3 workflows en `n8n/`. 53 tests con mocks. **Falta importarlos en n8n y probar el aviso real** (depende del canal de la Fase 4 y de una URL pública). El resumen en audio queda para la Fase 5.
-- [~] **Fase 7 — Despliegue** (2026-10-16): `Dockerfile`, `deploy/maritime.md`, `/chat` y protección con `API_TOKEN` listos; 55 tests. **Falta desplegar en Maritime** (requiere repo en GitHub y tu cuenta) y poner la URL pública en Zavu y n8n.
+- [~] **Fase 7 — Despliegue** (2026-10-16): `Dockerfile`, `deploy/maritime.md`, `/chat` y protección con `API_TOKEN` listos; 55 tests; imagen Docker construida (599 MB) y probada en local: `/health` 200, `/ask` y `/api/*` dan 401 sin token y la base se crea en `/data`. **Falta desplegar en Maritime** (requiere repo en GitHub y tu cuenta) y poner la URL pública en Zavu y n8n.
 - [ ] Fase 8 — Panel y monetización (`/api/*` y `/match` ya funcionan; faltan `dashboard/PROMPT.md` y `deploy/qatom.md`)
 
 ### Orden sugerido (cambio respecto al plan original)
