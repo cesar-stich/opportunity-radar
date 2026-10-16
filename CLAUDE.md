@@ -192,7 +192,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 ### Fases
 
 - [x] **Fase 0 — Esqueleto** (2026-10-16)
-- [x] **Fase 1 — Cerebro con herramientas** (2026-10-16): funciona con el LLM mock; Gemini y Groq están implementados pero falta probarlos con una llave real.
+- [x] **Fase 1 — Cerebro con herramientas** (2026-10-16): funciona con el LLM mock y con **Gemini real** (probado el 2026-10-16). Groq está implementado pero falta probarlo con llave.
 - [ ] Fase 2 — Memoria (AtomicMemory). ⚠️ Requiere Docker, que **no está instalado** en esta laptop.
 - [ ] Fase 3 — Descubrimiento (Tavily / Apify)
 - [ ] Fase 4 — Canal (Zavu WhatsApp → Telegram)
@@ -214,6 +214,7 @@ Por falta de tiempo y de Docker: 1) poner la llave de Gemini y probar el cerebro
 | 2026-10-16 | Groq por su API compatible con OpenAI (modelo por defecto `openai/gpt-oss-120b`) | Doc de tool use verificada el 2026-10-16. |
 | 2026-10-16 | Puntaje determinista, no hecho por el LLM | Es testeable, no gasta tokens y `/match` usa el mismo cálculo. |
 | 2026-10-16 | El historial de sesión guarda solo texto (no las llamadas a herramientas) | Contexto corto y sin problemas al cambiar de proveedor. "La 3" se resuelve con `ultimaLista` de la sesión. |
+| 2026-10-16 | Llave de Gemini probada: funciona con herramientas. En `.env`: `LLM_MODEL=gemini-3.5-flash-lite` | `gemini-3.8-flash` daba 503 (saturado) y `gemini-2.5-flash` ya no está disponible para usuarios nuevos (404). El proveedor reintenta 2 veces ante 503/429. Si sigue saturado, usar Groq de respaldo. |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)

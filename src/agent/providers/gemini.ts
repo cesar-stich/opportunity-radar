@@ -25,15 +25,22 @@ export class GeminiLLM implements LLMProvider {
       return { role: 'user', parts: m.results.map((r) => ({ functionResponse: { name: r.name, response: { result: r.result } } })) };
     });
 
-    const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.modelo}:generateContent`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
-      body: JSON.stringify({
-        systemInstruction: { parts: [{ text: system }] },
-        contents,
-        tools: [{ functionDeclarations: tools }],
-      }),
+    const body = JSON.stringify({
+      systemInstruction: { parts: [{ text: system }] },
+      contents,
+      tools: [{ functionDeclarations: tools }],
     });
+    // La capa gratuita a veces responde 503 (modelo saturado) o 429 (límite por minuto): reintentamos con espera.
+    let res: Response;
+    for (let intento = 0; ; intento++) {
+      res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${this.modelo}:generateContent`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json', 'x-goog-api-key': this.apiKey },
+        body,
+      });
+      if (res.ok || ![429, 503].includes(res.status) || intento >= 2) break;
+      await new Promise((r) => setTimeout(r, 1500 * (intento + 1)));
+    }
     if (!res.ok) throw new Error(`Gemini ${res.status}: ${(await res.text()).slice(0, 500)}`);
 
     const data = (await res.json()) as { candidates?: { content?: Content }[] };
