@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { crearLLM } from './agent/llm';
+import { TelegramChannel } from './channels/telegram';
 import { MockChannel, ZavuChannel } from './channels/zavu';
 import type { Env } from './config';
 import { abrirDb, type DB } from './db/index';
@@ -36,6 +37,13 @@ function crearCanalReal(env: Env, audio: AlmacenAudio): Channel {
   return new ZavuChannel(env.CHANNEL as 'zavu-whatsapp' | 'zavu-telegram', env.ZAVU_API_KEY, env.ZAVU_WEBHOOK_SECRET, env.ZAVU_SENDER_ID, audio);
 }
 
+// Telegram directo (sin Zavu): necesario para recibir notas de voz. Ver src/channels/telegram.ts.
+function crearTelegram(env: Env): Channel {
+  if (!env.TELEGRAM_BOT_TOKEN) throw new Error('CHANNEL=telegram requiere TELEGRAM_BOT_TOKEN en .env (el de @BotFather)');
+  if (!env.TELEGRAM_WEBHOOK_SECRET) throw new Error('CHANNEL=telegram requiere TELEGRAM_WEBHOOK_SECRET en .env (letras, números, _ o -)');
+  return new TelegramChannel(env.TELEGRAM_BOT_TOKEN, env.TELEGRAM_WEBHOOK_SECRET);
+}
+
 export function cargarPerfil(ruta = 'profile.json'): Perfil {
   return PerfilSchema.parse(JSON.parse(readFileSync(ruta, 'utf8')));
 }
@@ -51,7 +59,13 @@ export function crearDeps(env: Env, extra: Partial<Deps> = {}): Deps {
     perfil: extra.perfil ?? cargarPerfil(),
     llm: extra.llm ?? crearLLM(env),
     memoria: extra.memoria ?? (env.MEMORY_MODE === 'real' ? new AtomicMemoryStore(env.ATOMICMEMORY_URL ?? 'http://localhost:17350', env.ATOMICMEMORY_API_KEY) : new MockMemory()),
-    canal: extra.canal ?? (env.CHANNEL === 'mock' || env.ZAVU_MODE === 'mock' ? new MockChannel() : crearCanalReal(env, audio)),
+    canal:
+      extra.canal ??
+      (env.CHANNEL === 'telegram'
+        ? crearTelegram(env)
+        : env.CHANNEL === 'mock' || env.ZAVU_MODE === 'mock'
+          ? new MockChannel()
+          : crearCanalReal(env, audio)),
     voz: extra.voz ?? (env.VOICE_MODE === 'real' ? new ElevenLabsVoice(env.ELEVENLABS_API_KEY, env.ELEVENLABS_VOICE_ID) : new MockVoice()),
     buscador: extra.buscador ?? (env.TAVILY_MODE === 'real' ? new TavilySearch(env.TAVILY_API_KEY) : new MockSearch()),
     scraper: extra.scraper ?? (env.APIFY_MODE === 'real' ? new ApifyScraper(env.APIFY_TOKEN) : new MockScraper()),

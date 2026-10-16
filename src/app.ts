@@ -134,7 +134,8 @@ export function crearApp(deps: Deps) {
   });
 
   // Mensajes entrantes (WhatsApp o Telegram vía Zavu). Se contesta 200 al instante y se atiende en segundo plano.
-  app.post('/webhook/zavu', async (c) => {
+  // /webhook/telegram es el de Telegram directo (CHANNEL=telegram); mismo manejo, otro proveedor.
+  const webhook = async (c: Context) => {
     try {
       const msg = await deps.canal.recibir(c.req.raw);
       if (msg) void mensajeria.procesar(msg);
@@ -142,9 +143,11 @@ export function crearApp(deps: Deps) {
     } catch (e) {
       if (e instanceof FirmaInvalida) return c.json({ error: e.message }, 401);
       console.error('[webhook]', e);
-      return c.json({ ok: true }); // 200 para que Zavu no reintente un evento que no podemos leer
+      return c.json({ ok: true }); // 200 para que el proveedor no reintente un evento que no podemos leer
     }
-  });
+  };
+  app.post('/webhook/zavu', webhook);
+  app.post('/webhook/telegram', webhook);
 
   return Object.assign(app, { mensajeria });
 }

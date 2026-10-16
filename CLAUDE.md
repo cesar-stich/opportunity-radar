@@ -36,7 +36,7 @@ Soy Cesar, estudiante de Ingeniería de Telecomunicaciones en la UNI (Lima). Voy
 ## 3. Stack
 
 - **Lenguaje:** TypeScript (Node 22.13+; probado con Node 24), `pnpm`. Se ejecuta con `tsx` (sin paso de build).
-- **Servidor del agente:** Hono con rutas `/webhook/zavu`, `/ask`, `/match`, `/jobs/*`, `/api/*`, `/health`.
+- **Servidor del agente:** Hono con rutas `/webhook/telegram` (canal activo), `/webhook/zavu`, `/ask`, `/match`, `/jobs/*`, `/api/*`, `/health`.
 - **Validación:** Zod.
 - **LLM (cerebro), intercambiable:** interfaz `LLMProvider` en `src/agent/llm.ts` con *tool use* (function calling). Proveedores: `gemini` (por defecto, usar su capa gratuita de Google AI Studio), `groq` (capa gratuita) y `anthropic` (de pago, opcional). Se elige con `LLM_PROVIDER` y `LLM_MODEL`. **Verifica en la documentación oficial que la capa gratuita siga vigente y soporte function calling**; si no, dime y buscamos otra. El `mock` entiende frases típicas con reglas y llama a las mismas herramientas, para correr sin llaves. **No actives ningún proveedor de pago.** Modelos por defecto: `gemini-3.8-flash` (Gemini) y `openai/gpt-oss-120b` (Groq).
 - **Puntaje:** determinista en `src/agent/scoring.ts` (perfil + feedback + memoria → 0–100 con razones). El LLM decide cuándo puntuar y lo explica, pero no inventa el número. El mismo cálculo sirve para `/match`.
@@ -51,7 +51,8 @@ Soy Cesar, estudiante de Ingeniería de Telecomunicaciones en la UNI (Lima). Voy
 | **Apify** | Scraping de portales de convocatorias sin API (lista de fuentes en `fuentes`). | `src/tools/apify.ts` |
 | **Tavily** | Búsqueda abierta: descubrir oportunidades nuevas y enriquecer cada una (empresa, requisitos, noticias). | `src/tools/tavily.ts` |
 | **AtomicMemory** | Memoria a largo plazo: mi perfil, gustos y feedback ("descarté X porque Y"). El agente la consulta antes de puntuar. | `src/memory/atomicmemory.ts` |
-| **Zavu** | Canal de mensajería: **WhatsApp es la prioridad**; recibe y envía mensajes y audios. Solo transporta. Si WhatsApp no se puede probar gratis, se usa **Telegram** (Zavu lo soporta; si tampoco, bot de Telegram directo) sin cambiar el resto. | `src/channels/` |
+| **Zavu** | Canal de mensajería (solo transporta). **Hoy NO es el canal activo**: probado con texto en Telegram, pero no entrega notas de voz de Telegram, y SMS/email/llamadas son de pago o piden dominio. Queda como alternativa (`CHANNEL=zavu-telegram` o `zavu-whatsapp`). | `src/channels/zavu.ts` |
+| **Telegram directo** | **Canal activo** (`CHANNEL=telegram`): Bot API con webhook propio; recibe texto y notas de voz y envía texto y audio. Gratis. | `src/channels/telegram.ts` |
 | **ElevenLabs** | Voz: transcribir notas de voz (STT) y generar audios (TTS), incluido el resumen semanal hablado. | `src/voice/elevenlabs.ts` |
 | **n8n** | Solo disparadores programados: llama a `/jobs/escanear`, `/jobs/resumen-semanal`, `/jobs/recordar-plazos`. | `n8n/*.json` |
 | **Maritime** | Hosting del servidor del agente en micro-VM. | `deploy/maritime.md` |
@@ -112,8 +113,9 @@ LLM_MODEL=               # vacío = default del proveedor
 GEMINI_API_KEY=
 GROQ_API_KEY=
 ANTHROPIC_API_KEY=
-CHANNEL=mock             # mock | zavu-whatsapp | zavu-telegram
-TELEGRAM_BOT_TOKEN=
+CHANNEL=mock             # mock | telegram (directo, activo) | zavu-whatsapp | zavu-telegram
+TELEGRAM_BOT_TOKEN=      # el de @BotFather; solo con CHANNEL=telegram
+TELEGRAM_WEBHOOK_SECRET= # letras, números, _ o - (openssl rand -hex 24)
 ZAVU_API_KEY=
 ZAVU_WEBHOOK_SECRET=
 ELEVENLABS_API_KEY=
@@ -168,7 +170,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 │   ├── types.ts              # tipos y esquemas Zod del dominio
 │   ├── agent/                # bucle (agent.ts), prompt, tools, scoring, llm.ts + providers/
 │   ├── db/                   # SQLite (index.ts), consultas (repo.ts), seed.ts
-│   ├── channels/zavu.ts      # mock + real en el mismo archivo (igual en voice/, memory/, tools/)
+│   ├── channels/             # zavu.ts (mock + Zavu) y telegram.ts (Telegram directo, canal activo)
 │   ├── voice/elevenlabs.ts
 │   ├── memory/atomicmemory.ts
 │   ├── tools/{tavily,apify}.ts
@@ -195,8 +197,8 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 1 — Cerebro con herramientas** (2026-10-16): funciona con el LLM mock y con **Gemini real** (probado el 2026-10-16). Groq está implementado pero falta probarlo con llave.
 - [x] **Fase 2 — Memoria** (2026-10-16): AtomicMemory real. **Modo activo: Cloud** (api.atomicstrata.ai, plan Basic: 10,000 operaciones/mes; ingest = 3, search = 1). Probado en local (Docker) y en Cloud: después de reiniciar, con SQLite vacío, una oferta nueva en "Lima Norte" baja de 76 a 46.
 - [x] **Fase 3 — Descubrimiento** (2026-10-16): **Tavily real** probado con Gemini (`buscar_oportunidades`: guarda, puntúa y no duplica al repetir) y **Apify real** (`apify/cheerio-scraper`) probado en PRONABEC y OSIPTEL. `enriquecer` implementado con tests, sin probar con llave real. 27 tests.
-- [x] **Fase 4 — Canal** (2026-10-16): `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
-- [x] **Fase 5 — Voz** (2026-10-16): `ElevenLabsVoice` (STT `scribe_v2`, TTS `eleven_multilingual_v2`), audio entrante/saliente por Zavu, `REPLY_AS_VOICE` y resumen semanal hablado. 83 tests sin red. **Sin probar con llave real**; el audio entrante y el audio por Telegram dependen de detalles que la doc de Zavu no cubre.
+- [x] **Fase 4 — Canal** (2026-10-16; **canal activo cambiado a Telegram directo**, ver decisiones): texto y voz verificados de punta a punta con Telegram directo en local (túnel cloudflared). Antes: `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
+- [x] **Fase 5 — Voz** (2026-10-16; **verificada con llave real el 2026-10-16** por Telegram directo: nota de voz entra → STT → agente → TTS → `audio.mp3` sale; el resumen hablado por `/jobs` sigue sin probar): `ElevenLabsVoice` (STT `scribe_v2`, TTS `eleven_multilingual_v2`), audio entrante/saliente por Zavu, `REPLY_AS_VOICE` y resumen semanal hablado. 83 tests sin red. **Sin probar con llave real**; el audio entrante y el audio por Telegram dependen de detalles que la doc de Zavu no cubre.
 - [x] **Fase 6 — n8n** (2026-10-16): jobs `escanear`, `recordar-plazos` y `resumen-semanal` con umbral y sin avisos repetidos; 3 workflows en `n8n/`. 53 tests con mocks. **Falta importarlos en n8n y probar el aviso real** (depende del canal de la Fase 4 y de una URL pública). El resumen en audio queda para la Fase 5.
 - [~] **Fase 7 — Despliegue** (2026-10-16): `Dockerfile`, `deploy/maritime.md`, `/chat` y protección con `API_TOKEN` listos; 55 tests; imagen Docker construida (599 MB) y probada en local: `/health` 200, `/ask` y `/api/*` dan 401 sin token y la base se crea en `/data`. **Falta desplegar en Maritime** (requiere repo en GitHub y tu cuenta) y poner la URL pública en Zavu y n8n.
 - [x] **Fase 8 — Panel y monetización** (2026-10-16): `dashboard/PROMPT.md` (kanban de solo lectura con `PANEL_TOKEN`), `deploy/qatom.md` y `/match` listo para Qatom. **Falta crear el panel en Lovable y el ítem en Qatom** (cuentas tuyas).
@@ -244,6 +246,12 @@ Todas las fases están programadas. Siguiente: 1) Desplegar en Maritime → 2) c
 | 2026-10-16 | `/match` acepta forma anidada y plana, `POST` y `GET`, errores `{code, message, next_step}`, responde 404 si falta el token y devuelve `X-Qatom-Transaction-Id` | La guía de Qatom (qatom.ai/learn/charge-ai-agents-per-api-call) pide esos detalles; no documenta el método ni el cuerpo exactos, por eso se aceptan ambos. |
 | 2026-10-16 | Panel de solo lectura (sin endpoints de escritura) | Es lo que pide la Fase 8; el estado de cada oportunidad se cambia por el chat. Escribir desde un navegador público exigiría exponer un token con permisos de escritura. |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
+| 2026-10-16 | **Canal activo: Telegram directo (`CHANNEL=telegram`), Zavu fuera del camino** (`src/channels/telegram.ts`, ruta `/webhook/telegram`, secreto `X-Telegram-Bot-Api-Secret-Token`, `setWebhook` automático al arrancar con `PUBLIC_URL`) | Probado con la cuenta real: Zavu entrega las notas de voz de Telegram como `messageType:"text"`, `text:""` y sin `content` (verificado en su webhook y en `GET /v1/messages`), y su doc no describe media entrante de Telegram. Telegram permite un solo webhook por bot, así que no se pueden combinar. El plan Free de Zavu no ofrece alternativa útil: SMS a Perú US$0.235 c/u (crédito de US$2), llamadas desde US$0.07/min, email exige dominio propio con DNS. Texto en Telegram sí funcionaba por Zavu. |
+| 2026-10-16 | Telegram directo envía audio por bytes (`sendAudio` para mp3, `sendVoice` para ogg) | No hace falta `PUBLIC_URL` ni el almacén de audio, a diferencia de Zavu (que exige una URL). |
+| 2026-10-16 | Zavu `from` llega como `telegram:<id>`: se quita el prefijo al recibir | Para responder, la API pide solo el chat id numérico (error 400 si no). |
+| 2026-10-16 | ElevenLabs Free no puede usar voces de la biblioteca por API (402 `paid_plan_required`): se usa una voz predeterminada (Roger, `CwhRBWXzGAHq8TQ4Fs17`) | Verificado con la llave real. La llave se creó con permisos solo de TTS y STT (sin `voices_read`, no hace falta). |
+| 2026-10-16 | Prompt: los enlaces se copian completos como texto, sin `{url_1}` ni `[texto](enlace)` | Gemini flash-lite inventó una plantilla en vez de copiar la URL. Los enlaces `example.com` son de `pnpm seed` (ficticias). |
+| 2026-10-16 | Zavu se mantiene como respaldo opcional, no como función propia | Idea descartada por ahora: envío de respaldo por Zavu si falla Telegram. Si hay tiempo, es poco trabajo y gasta el cupo gratis de 2,000 mensajes/mes. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)
 

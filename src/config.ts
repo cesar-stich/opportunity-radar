@@ -17,8 +17,10 @@ const EnvSchema = z.object({
   GEMINI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
   ANTHROPIC_API_KEY: z.string().optional(),
-  CHANNEL: z.enum(['mock', 'zavu-whatsapp', 'zavu-telegram']).default('mock'),
+  CHANNEL: z.enum(['mock', 'zavu-whatsapp', 'zavu-telegram', 'telegram']).default('mock'),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
+  // Secreto del webhook de Telegram (solo A-Z, a-z, 0-9, _ y -; 1 a 256 caracteres).
+  TELEGRAM_WEBHOOK_SECRET: z.string().regex(/^[A-Za-z0-9_-]{1,256}$/).optional(),
   ZAVU_API_KEY: z.string().optional(),
   ZAVU_WEBHOOK_SECRET: z.string().optional(),
   ZAVU_SENDER_ID: z.string().optional(),

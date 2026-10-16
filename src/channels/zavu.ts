@@ -113,11 +113,16 @@ export class ZavuChannel implements Channel {
     if (ev.type !== 'message.inbound' && ev.type !== 'conversation.new') return null;
     const d = ev.data;
     if (!d?.from) return null;
-    const base = { de: d.from, id: d.messageId };
+    // En la práctica Zavu manda `telegram:123456` en `from`, pero para responder pide solo el chat id numérico.
+    const base = { de: d.from.replace(/^telegram:/, ''), id: d.messageId };
     if (d.messageType === 'audio' || d.messageType === 'voice')
       return { ...base, audio: { mime: d.content?.mimeType, url: d.content?.mediaUrl, mensajeId: d.messageId } };
     // Otros tipos (imagen, ubicación…) se ignoran: solo texto y notas de voz.
-    return d.text?.trim() ? { ...base, texto: d.text.trim() } : null;
+    if (d.text?.trim()) return { ...base, texto: d.text.trim() };
+    // Solo nombres de campos (no el contenido): sirve para ver cómo manda Zavu los audios sin filtrar datos.
+    const campos = (o: unknown) => (o && typeof o === 'object' ? Object.keys(o).join(',') : '-');
+    console.warn(`[canal] mensaje ignorado: tipo=${d.messageType ?? '?'} campos=[${campos(d)}] content=[${campos(d.content)}]`);
+    return null;
   }
 
   private cabeceras() {
