@@ -193,7 +193,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 
 - [x] **Fase 0 — Esqueleto** (2026-10-16)
 - [x] **Fase 1 — Cerebro con herramientas** (2026-10-16): funciona con el LLM mock y con **Gemini real** (probado el 2026-10-16). Groq está implementado pero falta probarlo con llave.
-- [x] **Fase 2 — Memoria** (2026-10-16): AtomicMemory real en Docker. Criterio cumplido: después de reiniciar, con SQLite vacío, una oferta nueva en "Lima Norte" bajó de 76 a 46 por un descarte recordado.
+- [x] **Fase 2 — Memoria** (2026-10-16): AtomicMemory real. **Modo activo: Cloud** (api.atomicstrata.ai, plan Basic: 10,000 operaciones/mes; ingest = 3, search = 1). Probado en local (Docker) y en Cloud: después de reiniciar, con SQLite vacío, una oferta nueva en "Lima Norte" baja de 76 a 46.
 - [ ] Fase 3 — Descubrimiento (Tavily / Apify)
 - [ ] Fase 4 — Canal (Zavu WhatsApp → Telegram)
 - [ ] Fase 5 — Voz (ElevenLabs)
