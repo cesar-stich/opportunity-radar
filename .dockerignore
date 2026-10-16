@@ -1,0 +1,11 @@
+node_modules
+.env
+.git
+data
+tests
+dashboard
+deploy
+n8n
+*.db
+*.md
+docker-compose.yml

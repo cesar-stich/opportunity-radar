@@ -89,10 +89,17 @@ Probar sin n8n (mock): `curl -X POST localhost:3000/jobs/escanear -H "authorizat
 
 **n8n (gratis, self-hosted o Cloud con trial):** importa `n8n/*.json` (Workflows → Import from File). En cada uno cambia en el nodo HTTP la URL `https://TU-URL-PUBLICA` por la de tu servidor y `CAMBIA_ESTE_TOKEN` por tu `JOBS_TOKEN`, y **publica** el workflow (si no, el cron no corre). La zona horaria ya está en `America/Lima`. n8n necesita llegar a tu servidor por internet: con el túnel en local o con la URL de Maritime (Fase 7).
 
+## Despliegue (Fase 7: Maritime)
+
+`Dockerfile` listo (Node 24, SQLite en `/data`). Guía paso a paso en [deploy/maritime.md](deploy/maritime.md): repo en GitHub → `maritime create radar --repo … --public --port 3000` → variables con `maritime env import` → poner la URL pública en el webhook de Zavu y en los workflows de n8n. En producción (`NODE_ENV=production`) `/ask`, `/chat` y `/api/*` exigen `Authorization: Bearer $API_TOKEN` (la URL pública no tiene login).
+
+Probar la imagen en local: `docker build -t radar . && docker run --rm -p 3000:3000 -e API_TOKEN=x radar` y `curl localhost:3000/health`.
+
 ## Rutas
 
 | Ruta | Qué hace |
 | --- | --- |
+| `POST /chat` `{ message, source? }` | Contrato de Maritime para contenedores propios; devuelve `{ response }` (mismo token que `/ask`) |
 | `GET /health` | Muestra qué integraciones están en mock y cuáles en real |
 | `POST /ask` `{ text, usuario? }` | Conversa con el agente |
 | `POST /match` `{ oportunidad, perfil? }` | Puntaje 0–100 y razones (servicio público para Qatom) |

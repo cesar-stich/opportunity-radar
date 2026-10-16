@@ -64,7 +64,7 @@ Regla de oro: **el cerebro es el servidor del agente**. Zavu solo transporta, n8
 
 - Zavu: https://docs.zavu.dev/introduction.md y https://docs.zavu.dev/quickstart (canales, webhooks, CLI, SDK). Verificar plan gratis/sandbox y reglas de mensajes proactivos en WhatsApp (plantillas). Si los proactivos fallan, usar SMS o Telegram para los avisos.
 - AtomicMemory: https://github.com/atomicstrata (core HTTP con Postgres+pgvector en Docker, SDK `@atomicmemory/sdk`, CLI). Developer Preview: la API puede cambiar.
-- Maritime: https://maritime.sh/docs (`maritime deploy`, `git push maritime main`, Docker, SDKs).
+- Maritime: https://maritime.sh/docs (`maritime create/deploy --repo`, Docker, SDKs).
 - Qatom: https://qatom.ai (plan Free: 1 agente, 5 ítems de catálogo, 25 transacciones/mes).
 - LLM gratuito: documentación oficial de Google AI Studio (Gemini API) y de Groq; verificar límites gratis y function calling.
 - Tavily: https://docs.tavily.com (plan gratis 1,000 créditos/mes).
@@ -97,7 +97,7 @@ Nota de voz entrante → STT → agente → TTS → audio saliente. Interruptor 
 Rutas `/jobs/*` protegidas por `JOBS_TOKEN`. Workflows exportados en `n8n/` con cron: escaneo diario, resumen semanal en audio, recordatorio de plazos (3 días antes). El agente solo avisa si el puntaje supera un umbral (`NOTIFY_MIN_SCORE`). Criterio: me llega un aviso sin que yo escriba.
 
 **Fase 7 — Despliegue**
-`Dockerfile`, `deploy/maritime.md` y despliegue en Maritime. Actualizar webhooks de Zavu y n8n a la URL pública. Criterio: todo funciona sin mi laptop.
+`Dockerfile`, `deploy/maritime.md` y despliegue en Maritime (con `maritime create --repo` desde GitHub; `git push maritime main` no existe). Actualizar webhooks de Zavu y n8n a la URL pública. Criterio: todo funciona sin mi laptop.
 
 **Fase 8 — Panel y monetización**
 Endpoints de solo lectura `/api/oportunidades`, `/api/postulaciones`, `/api/estadisticas`. `dashboard/PROMPT.md` con el prompt para generar el kanban en Lovable. Ruta `/match` y guía `deploy/qatom.md` para publicarla en Qatom (plan Free). Criterio: el panel muestra datos reales y `/match` aparece en Qatom.
@@ -198,12 +198,12 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 4 — Canal** (2026-10-16): `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
 - [ ] Fase 5 — Voz (ElevenLabs)
 - [x] **Fase 6 — n8n** (2026-10-16): jobs `escanear`, `recordar-plazos` y `resumen-semanal` con umbral y sin avisos repetidos; 3 workflows en `n8n/`. 53 tests con mocks. **Falta importarlos en n8n y probar el aviso real** (depende del canal de la Fase 4 y de una URL pública). El resumen en audio queda para la Fase 5.
-- [ ] Fase 7 — Despliegue (Maritime)
+- [~] **Fase 7 — Despliegue** (2026-10-16): `Dockerfile`, `deploy/maritime.md`, `/chat` y protección con `API_TOKEN` listos; 55 tests. **Falta desplegar en Maritime** (requiere repo en GitHub y tu cuenta) y poner la URL pública en Zavu y n8n.
 - [ ] Fase 8 — Panel y monetización (`/api/*` y `/match` ya funcionan; faltan `dashboard/PROMPT.md` y `deploy/qatom.md`)
 
 ### Orden sugerido (cambio respecto al plan original)
 
-Siguiente: 1) Fase 5 (voz) → 2) Fase 7 (despliegue, da la URL pública) → 3) Fase 8 (panel y `/match`) → 4) Conectar y probar todo con las cuentas reales (Zavu, n8n) ya con la URL de Maritime.
+Siguiente: 1) Desplegar en Maritime y conectar Zavu y n8n con esa URL → 2) Fase 5 (voz) → 3) Fase 8 (panel y `/match`) → 4) Conectar y probar todo con las cuentas reales (Zavu, n8n) ya con la URL de Maritime.
 
 ### Decisiones tomadas
 
@@ -232,6 +232,10 @@ Siguiente: 1) Fase 5 (voz) → 2) Fase 7 (despliegue, da la URL pública) → 3)
 | 2026-10-16 | Pruebas: **no se gastan créditos ni llamadas reales** de Tavily/LLM/Zavu para probar; se integra y se prueba con mocks, y Cesar valida con su cuenta | Indicación de Cesar durante la Fase 4. |
 | 2026-10-16 | Lógica de los avisos en `src/jobs.ts`; tabla nueva `avisos (oportunidad_id, tipo)` para no repetir | n8n solo dispara. El escaneo avisa solo las nuevas con puntaje ≥ `NOTIFY_MIN_SCORE`; el recordatorio avisa una vez lo que está en "interesa" (o es "nueva" con puntaje alto) y cierra en ≤ 3 días. Tras un aviso se fija la lista de la sesión para que "descarta la 2" funcione. |
 | 2026-10-16 | Workflows de n8n con el token como texto de relleno (`CAMBIA_ESTE_TOKEN`) y URL de relleno | No subir secretos a git; n8n puede bloquear `$env` en sus nodos. El JSON sigue el formato de exportación de n8n pero la doc oficial no lista los nombres internos de campos, así que no está validado con una instancia real. |
+| 2026-10-16 | **Maritime no soporta `git push maritime main`**: se despliega con `maritime create/deploy --repo <GitHub>` (corregido en las secciones 4 y 5) | Doc del CLI (2026-10-16). Requiere un repo de GitHub con Dockerfile; `--public --port 3000` da una URL sin login. |
+| 2026-10-16 | Datos en `/data` (`DB_PATH=/data/radar.db` en el Dockerfile) y cron solo en n8n | Doc: solo `/data` persiste; un agente dormido no ejecuta temporizadores internos, pero despierta en ~1 s con cualquier petición a su URL pública. |
+| 2026-10-16 | `/ask`, `/chat` y `/api/*` exigen `API_TOKEN`; en producción sin token quedan cerrados. `/match`, `/health` y el webhook (firmado) siguen públicos | La URL de Maritime es pública y sin login: sin esto cualquiera gastaría la cuota de Tavily/Gemini o leería borradores y perfil. Para el panel de Lovable (Fase 8) habrá que decidir cómo pasar el token sin exponerlo. |
+| 2026-10-16 | Ruta `POST /chat {message, source}` → `{response}` | Contrato que Maritime pide a contenedores propios (`/health` y `/chat`). |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)

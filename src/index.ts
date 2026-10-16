@@ -6,7 +6,8 @@ import { crearDeps } from './deps';
 const env = leerEnv();
 const deps = crearDeps(env);
 
-serve({ fetch: crearApp(deps).fetch, port: env.PORT }, (info) => {
+// 0.0.0.0: dentro de un contenedor hay que escuchar en todas las interfaces, no solo en localhost.
+serve({ fetch: crearApp(deps).fetch, port: env.PORT, hostname: '0.0.0.0' }, (info) => {
   console.log(`📡 Radar escuchando en http://localhost:${info.port}`);
   console.log(`   LLM=${deps.llm.nombre} memoria=${deps.memoria.nombre} canal=${deps.canal.nombre} voz=${deps.voz.nombre}`);
   if (deps.canal.nombre !== 'mock') {

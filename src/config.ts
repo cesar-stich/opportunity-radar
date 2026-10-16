@@ -34,6 +34,9 @@ const EnvSchema = z.object({
   TAVILY_API_KEY: z.string().optional(),
   APIFY_TOKEN: z.string().optional(),
   JOBS_TOKEN: z.string().optional(),
+  // Protege /ask, /chat y /api/*. En producción (NODE_ENV=production) es obligatorio: la URL pública no tiene login.
+  API_TOKEN: z.string().optional(),
+  NODE_ENV: z.string().default('development'),
   NOTIFY_MIN_SCORE: z.coerce.number().default(70),
   ZAVU_MODE: modo,
   VOICE_MODE: modo,

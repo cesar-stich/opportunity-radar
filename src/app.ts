@@ -23,6 +23,8 @@ async function leerJson<T extends z.ZodType>(c: Context, schema: T) {
     : ({ ok: false, res: c.json({ error: z.prettifyError(parsed.error) }, 400) } as const);
 }
 
+const ChatBody = z.object({ message: z.string().min(1), source: z.string().optional() });
+
 export function crearApp(deps: Deps) {
   const app = new Hono();
   const agente = crearAgente(deps);
@@ -40,12 +42,35 @@ export function crearApp(deps: Deps) {
     }),
   );
 
+  // /ask, /chat y /api/* son privados. En local (sin API_TOKEN) quedan abiertos; en producción sin token quedan cerrados.
+  const privado = async (c: Context, next: () => Promise<void>) => {
+    const token = deps.env.API_TOKEN;
+    if (!token && deps.env.NODE_ENV !== 'production') return next();
+    if (!token) return c.json({ error: 'API_TOKEN no configurado' }, 401);
+    if (c.req.header('authorization') !== `Bearer ${token}`) return c.json({ error: 'No autorizado' }, 401);
+    return next();
+  };
+  app.use('/ask', privado);
+  app.use('/chat', privado);
+
   // Conversación directa por HTTP (lo mismo que llegará por WhatsApp/Telegram).
   app.post('/ask', async (c) => {
     const body = await leerJson(c, AskBody);
     if (!body.ok) return body.res;
     try {
       return c.json(await agente.responder(body.data.usuario, body.data.text));
+    } catch (e) {
+      console.error(e);
+      return c.json({ error: (e as Error).message }, 502);
+    }
+  });
+
+  // Contrato de Maritime para contenedores propios: POST /chat { message, source } → { response }.
+  app.post('/chat', async (c) => {
+    const body = await leerJson(c, ChatBody);
+    if (!body.ok) return body.res;
+    try {
+      return c.json({ response: (await agente.responder('maritime', body.data.message)).respuesta });
     } catch (e) {
       console.error(e);
       return c.json({ error: (e as Error).message }, 502);
@@ -61,6 +86,7 @@ export function crearApp(deps: Deps) {
 
   // API de solo lectura para el panel (Lovable).
   app.use('/api/*', cors());
+  app.use('/api/*', privado);
   app.get('/api/oportunidades', (c) => {
     const filtro = FiltroApi.safeParse(c.req.query());
     if (!filtro.success) return c.json({ error: z.prettifyError(filtro.error) }, 400);
