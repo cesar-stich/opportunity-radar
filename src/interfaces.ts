@@ -31,7 +31,7 @@ export interface MemoryStore {
 }
 
 // ---------- Canal de mensajería (Zavu: WhatsApp / Telegram) ----------
-export type MensajeEntrante = { de: string; texto?: string; audio?: { datos?: Uint8Array; url?: string; mime?: string } };
+export type MensajeEntrante = { de: string; id?: string; texto?: string; audio?: { datos?: Uint8Array; url?: string; mime?: string } };
 
 export interface Channel {
   nombre: string;

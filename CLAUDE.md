@@ -195,7 +195,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 1 — Cerebro con herramientas** (2026-10-16): funciona con el LLM mock y con **Gemini real** (probado el 2026-10-16). Groq está implementado pero falta probarlo con llave.
 - [x] **Fase 2 — Memoria** (2026-10-16): AtomicMemory real. **Modo activo: Cloud** (api.atomicstrata.ai, plan Basic: 10,000 operaciones/mes; ingest = 3, search = 1). Probado en local (Docker) y en Cloud: después de reiniciar, con SQLite vacío, una oferta nueva en "Lima Norte" baja de 76 a 46.
 - [x] **Fase 3 — Descubrimiento** (2026-10-16): **Tavily real** probado con Gemini (`buscar_oportunidades`: guarda, puntúa y no duplica al repetir) y **Apify real** (`apify/cheerio-scraper`) probado en PRONABEC y OSIPTEL. `enriquecer` implementado con tests, sin probar con llave real. 27 tests.
-- [ ] Fase 4 — Canal (Zavu WhatsApp → Telegram)
+- [x] **Fase 4 — Canal** (2026-10-16): `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
 - [ ] Fase 5 — Voz (ElevenLabs)
 - [ ] Fase 6 — n8n (`/jobs/*` ya exige `JOBS_TOKEN`; hoy responde 501)
 - [ ] Fase 7 — Despliegue (Maritime)
@@ -203,7 +203,7 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 
 ### Orden sugerido (cambio respecto al plan original)
 
-Siguiente: 1) Fase 4 (canal) → 2) Fase 6 (avisos; `/jobs/escanear` ya puede llamar a `descubrir()`) → 3) Fase 5 (voz) → 4) Fases 7 y 8.
+Siguiente: 1) Probar la Fase 4 con la cuenta real de Zavu → 2) Fase 6 (avisos; `/jobs/escanear` ya puede llamar a `descubrir()`) → 3) Fase 5 (voz) → 4) Fases 7 y 8.
 
 ### Decisiones tomadas
 
@@ -223,6 +223,13 @@ Siguiente: 1) Fase 4 (canal) → 2) Fase 6 (avisos; `/jobs/escanear` ya puede ll
 | 2026-10-16 | Apify: actor público `apify/cheerio-scraper` por `POST /v2/actors/apify~cheerio-scraper/run-sync-get-dataset-items` con `Bearer` (la doc usa `/actors/`, no `/acts/`) | Actor gratis (solo se paga el uso de plataforma; Free = US$5/mes sin tarjeta). Sin crear un actor propio: un `pageFunction` genérico lee tarjetas (título + enlace) o filas de tabla. Una sola página por fuente, sin seguir enlaces (frecuencia baja). Requisitos descubiertos al probar: aprobar permisos del actor una vez en la consola (403 `full-permission-actor-not-approved`) y `proxyConfiguration` es obligatorio. |
 | 2026-10-16 | Portales de Apify: PRONABEC becas internacionales y OSIPTEL prácticas vigentes | HTML sin JavaScript, `robots.txt` permite o no existe, datos públicos. Sembrados en `fuentes` junto a 3 consultas de Tavily, ahora **activas** (antes inactivas). |
 | 2026-10-16 | Descubrimiento en `src/agent/descubrimiento.ts`, compartido por la herramienta `buscar_oportunidades`, `pnpm escanear` y (Fase 6) `/jobs/escanear` | Una fuente caída no detiene a las demás; los errores se avisan en la respuesta. |
+| 2026-10-16 | **Canal activo: Telegram vía Zavu**, no WhatsApp | Doc de Zavu (2026-10-16): WhatsApp pide un número que no esté ya en WhatsApp (el plan Free no compra números de Zavu), la sandbox `zv_test_` solo envía a teléfonos del equipo desde un número compartido, y fuera de las 24 h solo se permiten plantillas aprobadas (rompe los avisos proactivos de la Fase 6). Telegram es gratis, sin ventana, y se conecta con el token de @BotFather. Una sola clase sirve para ambos canales. |
+| 2026-10-16 | Zavu: `POST https://api.zavu.dev/v1/messages {to,text,channel}` con `Bearer` (+ `Zavu-Sender`); webhook `message.inbound` firmado con `X-Zavu-Signature: t=…,v2=HMAC_SHA256(secreto, "{t}.{cuerpo}")` (v1 = solo cuerpo), tolerancia 300 s / −60 s | Verificado en la doc. Se firma sobre el cuerpo crudo. En Telegram `to` y `data.from` son el chat id numérico. |
+| 2026-10-16 | El webhook responde 200 de inmediato y el agente corre en segundo plano (`src/mensajeria.ts`); se deduplica por `data.messageId` | Zavu exige 2xx en 30 s y reintenta (1 min, 5 min, 15 min, 1 h, 4 h); Gemini llegó a tardar 24 s. |
+| 2026-10-16 | Solo los IDs en `ALLOWED_SENDERS` pueden hablar con el agente; sin configurar, el bot responde con el ID del que escribe. Con `ZAVU_MODE=real` es obligatorio `ZAVU_WEBHOOK_SECRET` | El bot de Telegram es público: cualquiera podría gastar la cuota de Tavily y del LLM, o falsificar mensajes en el webhook. |
+| 2026-10-16 | Respuestas del LLM convertidas a texto plano antes de enviar (`src/util/formato.ts`; WhatsApp conserva `*negrita*`) y partidas en trozos de 3500 caracteres | El LLM escribe Markdown (`**x**`, `[t](url)`) que no se ve igual en cada canal; la doc de Zavu no garantiza su formato en Telegram. |
+| 2026-10-16 | Regla 8 (confirmación explícita): hoy **ninguna herramienta tiene efecto externo** (solo borradores y datos internos), así que no hay nada que confirmar todavía | La compuerta de confirmación se agrega cuando exista una acción con efecto (p. ej. enviar un correo). Hasta entonces el prompt prohíbe decir que algo se envió. |
+| 2026-10-16 | Pruebas: **no se gastan créditos ni llamadas reales** de Tavily/LLM/Zavu para probar; se integra y se prueba con mocks, y Cesar valida con su cuenta | Indicación de Cesar durante la Fase 4. |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)

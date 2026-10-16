@@ -5,6 +5,8 @@ import { crearAgente } from './agent/agent';
 import { puntuar } from './agent/scoring';
 import * as repo from './db/repo';
 import type { Deps } from './deps';
+import { FirmaInvalida } from './channels/zavu';
+import { crearMensajeria } from './mensajeria';
 import { ESTADOS, ParaPuntuarSchema, PerfilSchema, TIPOS } from './types';
 
 // Servidor del agente: el cerebro vive aquí. Zavu solo transporta, n8n solo dispara, Maritime solo aloja.
@@ -23,6 +25,7 @@ async function leerJson<T extends z.ZodType>(c: Context, schema: T) {
 export function crearApp(deps: Deps) {
   const app = new Hono();
   const agente = crearAgente(deps);
+  const mensajeria = crearMensajeria({ canal: deps.canal, agente, permitidos: deps.env.ALLOWED_SENDERS });
 
   app.get('/health', (c) =>
     c.json({
@@ -73,7 +76,18 @@ export function crearApp(deps: Deps) {
   });
   app.post('/jobs/:job', (c) => c.json({ error: `Job "${c.req.param('job')}": pendiente Fase 6` }, 501));
 
-  app.post('/webhook/zavu', (c) => c.json({ error: 'Webhook de Zavu: pendiente Fase 4' }, 501));
+  // Mensajes entrantes (WhatsApp o Telegram vía Zavu). Se contesta 200 al instante y se atiende en segundo plano.
+  app.post('/webhook/zavu', async (c) => {
+    try {
+      const msg = await deps.canal.recibir(c.req.raw);
+      if (msg) void mensajeria.procesar(msg);
+      return c.json({ ok: true });
+    } catch (e) {
+      if (e instanceof FirmaInvalida) return c.json({ error: e.message }, 401);
+      console.error('[webhook]', e);
+      return c.json({ ok: true }); // 200 para que Zavu no reintente un evento que no podemos leer
+    }
+  });
 
-  return app;
+  return Object.assign(app, { mensajeria });
 }

@@ -1,4 +1,6 @@
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { Channel, MensajeEntrante } from '../interfaces';
+import { aTextoPlano } from '../util/formato';
 
 // Zavu = solo transporte de mensajes (WhatsApp primero, Telegram de respaldo). El cerebro está en el servidor.
 
@@ -24,21 +26,110 @@ export class MockChannel implements Channel {
   }
 }
 
-// Real: pendiente Fase 4 (leer docs de Zavu: sandbox, plantillas para mensajes proactivos, firma del webhook).
+// ---------- Real: API de Zavu (https://docs.zavu.dev, verificada el 2026-10-16) ----------
+// Una sola clase para WhatsApp y Telegram: Zavu usa el mismo contrato de envío y de webhook para los dos.
+//  - Enviar: POST https://api.zavu.dev/v1/messages  { to, text, channel }  con `Authorization: Bearer zv_…`
+//    (`Zavu-Sender: snd_…` elige el sender si la cuenta tiene varios). Responde 202.
+//  - Recibir: webhook del sender, evento `message.inbound`, firmado en `X-Zavu-Signature`.
+//  - Telegram: `to` es el chat id numérico (llega en `data.from`); el usuario debe escribirle primero al bot. Es gratis.
+//  - WhatsApp: texto libre solo dentro de las 24 h del último mensaje del usuario; fuera de eso Zavu exige plantilla.
+//    Por eso los avisos proactivos (Fase 6) van mejor por Telegram.
+
+export class FirmaInvalida extends Error {}
+
+const API = 'https://api.zavu.dev/v1/messages';
+const MAX_TEXTO = 3500; // WhatsApp y Telegram aceptan ~4096 caracteres; dejamos margen
+const TOLERANCIA_SEG = 300; // la doc: rechazar firmas de hace más de 5 min o más de 60 s en el futuro
+const ADELANTO_SEG = 60;
+
+// Verifica X-Zavu-Signature: `t=<unix>,v2=<hex>` donde v2 = HMAC_SHA256(secreto, "{t}.{cuerpo}")
+// (v1, de webhooks antiguos, firma solo el cuerpo). Compara en tiempo constante.
+export function verificarFirma(secreto: string, cuerpo: string, cabecera: string | null, ahoraSeg = Date.now() / 1000): void {
+  if (!cabecera) throw new FirmaInvalida('Falta X-Zavu-Signature');
+  const partes = Object.fromEntries(cabecera.split(',').map((p) => p.trim().split('=', 2) as [string, string]));
+  const t = Number(partes.t);
+  if (!Number.isFinite(t)) throw new FirmaInvalida('Firma sin timestamp');
+  const edad = ahoraSeg - t;
+  if (edad > TOLERANCIA_SEG || edad < -ADELANTO_SEG) throw new FirmaInvalida('Firma fuera de la ventana de tiempo');
+  const recibida = partes.v2 ?? partes.v1;
+  if (!recibida) throw new FirmaInvalida('Firma sin v1 ni v2');
+  const firmado = partes.v2 ? `${t}.${cuerpo}` : cuerpo;
+  const esperada = createHmac('sha256', secreto).update(firmado).digest('hex');
+  const a = Buffer.from(esperada);
+  const b = Buffer.from(recibida);
+  if (a.length !== b.length || !timingSafeEqual(a, b)) throw new FirmaInvalida('Firma incorrecta');
+}
+
+// Parte un texto largo en trozos por saltos de línea (sin cortar palabras si se puede).
+export function partirTexto(texto: string, max = MAX_TEXTO): string[] {
+  const trozos: string[] = [];
+  let resto = texto.trim();
+  while (resto.length > max) {
+    const corte = Math.max(resto.lastIndexOf('\n', max), resto.lastIndexOf(' ', max));
+    const n = corte > max / 2 ? corte : max;
+    trozos.push(resto.slice(0, n).trim());
+    resto = resto.slice(n).trim();
+  }
+  if (resto) trozos.push(resto);
+  return trozos;
+}
+
+type EventoZavu = {
+  type?: string;
+  data?: { messageId?: string; from?: string; channel?: string; messageType?: string; text?: string; content?: { mimeType?: string; mediaId?: string } };
+};
+
 export class ZavuChannel implements Channel {
   constructor(
     public nombre: 'zavu-whatsapp' | 'zavu-telegram',
     private apiKey?: string,
     private webhookSecret?: string,
+    private senderId?: string,
   ) {}
 
-  async recibir(): Promise<MensajeEntrante | null> {
-    throw new Error('Zavu real: pendiente Fase 4 (usa CHANNEL=mock)');
+  private get canal() {
+    return this.nombre === 'zavu-telegram' ? 'telegram' : 'whatsapp';
   }
-  async enviarTexto(): Promise<void> {
-    throw new Error('Zavu real: pendiente Fase 4 (usa CHANNEL=mock)');
+
+  async recibir(req: Request): Promise<MensajeEntrante | null> {
+    const cuerpo = await req.text(); // el cuerpo crudo: la firma se calcula sobre estos bytes exactos
+    if (this.webhookSecret) verificarFirma(this.webhookSecret, cuerpo, req.headers.get('x-zavu-signature'));
+    let ev: EventoZavu;
+    try {
+      ev = JSON.parse(cuerpo);
+    } catch {
+      return null;
+    }
+    // Acuses (message.sent / delivered…) y otros eventos no son mensajes del usuario.
+    if (ev.type !== 'message.inbound' && ev.type !== 'conversation.new') return null;
+    const d = ev.data;
+    if (!d?.from) return null;
+    const base = { de: d.from, id: d.messageId };
+    if (d.messageType === 'audio' || d.messageType === 'voice') return { ...base, audio: { mime: d.content?.mimeType } };
+    // Otros tipos (imagen, ubicación…) se ignoran por ahora: solo texto y, en la Fase 5, audio.
+    return d.text?.trim() ? { ...base, texto: d.text.trim() } : null;
   }
+
+  async enviarTexto(para: string, texto: string): Promise<void> {
+    if (!this.apiKey) throw new Error('CHANNEL real requiere ZAVU_API_KEY en .env');
+    // Zavu no garantiza el formato Markdown del LLM en cada canal: mandamos texto limpio y legible.
+    for (const trozo of partirTexto(aTextoPlano(texto, this.canal))) {
+      const res = await fetch(API, {
+        method: 'POST',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${this.apiKey}`,
+          ...(this.senderId ? { 'zavu-sender': this.senderId } : {}),
+        },
+        body: JSON.stringify({ to: para, text: trozo, channel: this.canal }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Zavu ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    }
+  }
+
+  // La API de audio de Zavu pide una URL pública (HTTPS, 24 h disponible), no bytes: se resuelve en la Fase 5.
   async enviarAudio(): Promise<void> {
-    throw new Error('Zavu real: pendiente Fase 4 (usa CHANNEL=mock)');
+    throw new Error('Enviar audio por Zavu: pendiente Fase 5 (requiere una URL pública para el archivo)');
   }
 }

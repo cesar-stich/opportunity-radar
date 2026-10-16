@@ -51,6 +51,28 @@ pnpm escanear "becas cloud Perú"   # búsqueda puntual en Tavily
 
 Por chat: *"busca prácticas de telecomunicaciones en Lima"* (herramienta `buscar_oportunidades`), *"escanea las fuentes"* o *"investiga la 2"* (`enriquecer_oportunidad`). Todo se deduplica por URL y por título + organización.
 
+## Canal de mensajería (Fase 4: Zavu + Telegram)
+
+Se eligió **Telegram** porque es gratis y sin ventana de 24 h; WhatsApp por Zavu exige un número que no esté ya en WhatsApp (el plan Free no puede comprar números de Zavu) y plantillas aprobadas para avisar sin que escribas primero. El código es el mismo para ambos: cambiar a WhatsApp es `CHANNEL=zavu-whatsapp`.
+
+1. **Bot:** en Telegram habla con [@BotFather](https://t.me/BotFather), `/newbot`, guarda el token.
+2. **Zavu:** entra a https://dashboard.zavu.dev, crea tu proyecto y copia una API key (Settings → API Keys, `zv_live_…`; con `zv_test_…` solo envía a miembros de tu equipo). En tu **Sender → Channels → Add Telegram** pega el token, Verify y Save (Zavu registra el webhook con Telegram solo).
+3. **URL pública:** Zavu necesita llegar a tu servidor. En local usa un túnel: `winget install Cloudflare.cloudflared` y `cloudflared tunnel --url http://localhost:3000` (sin cuenta; da una URL `https://….trycloudflare.com`). En la Fase 7 será la URL de Maritime.
+4. **Webhook:** en el Sender → **Add Webhook**: URL `https://TU-URL/webhook/zavu`, eventos `message.inbound` y `conversation.new`. Copia el **secreto** que te muestra.
+5. **.env** (el secreto es obligatorio: sin él no arranca, para que nadie falsifique mensajes):
+
+```
+CHANNEL=zavu-telegram
+ZAVU_MODE=real
+ZAVU_API_KEY=zv_…
+ZAVU_WEBHOOK_SECRET=…
+ALLOWED_SENDERS=          # vacío al principio
+```
+
+6. `pnpm dev`, escríbele "hola" a tu bot: te responde con **tu ID** (chat id). Ponlo en `ALLOWED_SENDERS`, reinicia y listo. Solo ese ID puede usar el agente (el bot de Telegram es público y cada pregunta gasta cuota de Tavily y del LLM).
+
+Límites del plan Free de Zavu (doc del 2026-10-16): 2,000 mensajes/mes entre WhatsApp y Telegram (cuentan también los entrantes) y 250 conversacionales por día una vez verificada la cuenta (100/día sin verificar: se verifica con identidad o agregando un método de pago, "nothing is charged").
+
 ## Rutas
 
 | Ruta | Qué hace |
@@ -61,7 +83,7 @@ Por chat: *"busca prácticas de telecomunicaciones en Lima"* (herramienta `busca
 | `GET /api/oportunidades?estado=&tipo=` | Lista para el panel |
 | `GET /api/postulaciones`, `GET /api/estadisticas` | Datos para el panel |
 | `POST /jobs/*` | Disparadores de n8n (requieren `Authorization: Bearer $JOBS_TOKEN`). Pendiente: Fase 6 |
-| `POST /webhook/zavu` | Mensajes entrantes. Pendiente: Fase 4 |
+| `POST /webhook/zavu` | Mensajes entrantes de Zavu (firma `X-Zavu-Signature` obligatoria). Contesta 200 al instante y responde en segundo plano |
 
 ## Estado
 
@@ -72,10 +94,13 @@ Por chat: *"busca prácticas de telecomunicaciones en Lima"* (herramienta `busca
 | AtomicMemory | ✅ real con Docker (probado: recuerda descartes tras reiniciar) · mock en RAM |
 | Tavily | ✅ real probado con Gemini (búsqueda, plazos, sin duplicados) · mock sin llave |
 | Apify | ✅ real probado con `apify/cheerio-scraper` en PRONABEC y OSIPTEL · mock sin llave |
-| Zavu | mock · real pendiente (Fase 4) |
+| Zavu (Telegram / WhatsApp) | ✅ implementado y probado con tests sin red (firma, envío, dedupe, dueño único) · **falta probarlo con tu cuenta** (ver pasos arriba) |
 | ElevenLabs | mock · real pendiente (Fase 5) |
 
 ## Pendiente
+
+- Notas de voz y audios salientes por Zavu (Fase 5): la API de audio de Zavu pide una **URL pública HTTPS** del archivo, no bytes, y la doc no explica cómo bajar el audio de un mensaje entrante; hoy el bot responde que aún no entiende audios.
+- WhatsApp con Zavu: sin probar (necesita número propio sin WhatsApp). Los avisos proactivos fuera de 24 h requerirían plantillas aprobadas.
 
 - Tavily devuelve sobre todo portales agregadores (practicas.pe, Jobted…) y pocas ofertas individuales; la mayoría sale **sin plazo** (la página no lo trae en el resumen). Es un límite de la fuente, no se inventa la fecha.
 - Los portales de Apify se leen con un `pageFunction` genérico (tarjetas con título + enlace, o tablas). Un portal con JavaScript pesado necesitaría otro actor (p. ej. Playwright).

@@ -21,6 +21,12 @@ const EnvSchema = z.object({
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   ZAVU_API_KEY: z.string().optional(),
   ZAVU_WEBHOOK_SECRET: z.string().optional(),
+  ZAVU_SENDER_ID: z.string().optional(),
+  // IDs que pueden hablar con el agente (chat id de Telegram o teléfono E.164), separados por comas.
+  ALLOWED_SENDERS: z
+    .string()
+    .default('')
+    .transform((v) => v.split(',').map((s) => s.trim()).filter(Boolean)),
   ELEVENLABS_API_KEY: z.string().optional(),
   ELEVENLABS_VOICE_ID: z.string().optional(),
   ATOMICMEMORY_URL: z.string().optional(),

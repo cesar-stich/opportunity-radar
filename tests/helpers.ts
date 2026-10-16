@@ -11,5 +11,5 @@ export function depsDePrueba(extra: Partial<Deps> = {}): Deps {
   const db = abrirDb(':memory:');
   sembrar(db);
   const env = leerEnv({ JOBS_TOKEN: 'secreto' });
-  return crearDeps(env, { db, llm: new MockLLM(), memoria: new MockMemory(), canal: new MockChannel(), ...extra });
+  return crearDeps(extra.env ?? env, { db, llm: new MockLLM(), memoria: new MockMemory(), canal: new MockChannel(), ...extra });
 }
