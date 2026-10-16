@@ -1,0 +1,10 @@
+{
+  "nombre": "Cesar",
+  "estudios": "Ingeniería de Telecomunicaciones, UNI (FIEE), Lima",
+  "certificaciones": ["Huawei HCIA-AI V4.0", "Huawei HCIA-Cloud Service V3.5"],
+  "experiencia": ["Director de Relaciones Públicas, IEEE CIS UNI (talleres, curso de Machine Learning, hackathon HackCIS)"],
+  "busca": ["prácticas pre-profesionales", "hackathones", "becas", "cursos de IA y cloud"],
+  "intereses": ["IA", "machine learning", "cloud", "telecomunicaciones", "datos"],
+  "ubicacion": "Lima, Perú",
+  "idioma": "español"
+}
