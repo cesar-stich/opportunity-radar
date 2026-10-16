@@ -7,13 +7,14 @@ import * as repo from './db/repo';
 import type { Deps } from './deps';
 import { FirmaInvalida } from './channels/zavu';
 import { JOBS, type NombreJob } from './jobs';
+import { leerEntradaMatch } from './match';
 import { crearMensajeria } from './mensajeria';
-import { ESTADOS, ParaPuntuarSchema, PerfilSchema, TIPOS } from './types';
+import { tokenValido } from './util/token';
+import { ESTADOS, TIPOS } from './types';
 
 // Servidor del agente: el cerebro vive aquí. Zavu solo transporta, n8n solo dispara, Maritime solo aloja.
 
 const AskBody = z.object({ text: z.string().min(1), usuario: z.string().default('local') });
-const MatchBody = z.object({ perfil: PerfilSchema.optional(), oportunidad: ParaPuntuarSchema });
 const FiltroApi = z.object({ estado: z.enum(ESTADOS).optional(), tipo: z.enum(TIPOS).optional() });
 
 async function leerJson<T extends z.ZodType>(c: Context, schema: T) {
@@ -28,7 +29,7 @@ const ChatBody = z.object({ message: z.string().min(1), source: z.string().optio
 export function crearApp(deps: Deps) {
   const app = new Hono();
   const agente = crearAgente(deps);
-  const mensajeria = crearMensajeria({ canal: deps.canal, agente, permitidos: deps.env.ALLOWED_SENDERS });
+  const mensajeria = crearMensajeria({ canal: deps.canal, agente, permitidos: deps.env.ALLOWED_SENDERS, voz: deps.voz, responderEnVoz: deps.env.REPLY_AS_VOICE });
 
   app.get('/health', (c) =>
     c.json({
@@ -43,12 +44,16 @@ export function crearApp(deps: Deps) {
   );
 
   // /ask, /chat y /api/* son privados. En local (sin API_TOKEN) quedan abiertos; en producción sin token quedan cerrados.
+  // El panel web usa PANEL_TOKEN, que solo vale para leer (GET) /api/*.
   const privado = async (c: Context, next: () => Promise<void>) => {
-    const token = deps.env.API_TOKEN;
-    if (!token && deps.env.NODE_ENV !== 'production') return next();
-    if (!token) return c.json({ error: 'API_TOKEN no configurado' }, 401);
-    if (c.req.header('authorization') !== `Bearer ${token}`) return c.json({ error: 'No autorizado' }, 401);
-    return next();
+    const { API_TOKEN, PANEL_TOKEN, NODE_ENV } = deps.env;
+    if (!API_TOKEN && !PANEL_TOKEN && NODE_ENV !== 'production') return next();
+    const auth = c.req.header('authorization');
+    if (tokenValido(auth, API_TOKEN)) return next();
+    const soloLectura = c.req.method === 'GET' && c.req.path.startsWith('/api/');
+    if (soloLectura && tokenValido(auth, PANEL_TOKEN)) return next();
+    if (!API_TOKEN && NODE_ENV === 'production') return c.json({ error: 'API_TOKEN no configurado' }, 401);
+    return c.json({ error: 'No autorizado' }, 401);
   };
   app.use('/ask', privado);
   app.use('/chat', privado);
@@ -77,12 +82,27 @@ export function crearApp(deps: Deps) {
     }
   });
 
-  // Servicio público de matching (Qatom): solo perfil + oportunidad, sin datos privados ni feedback.
-  app.post('/match', async (c) => {
-    const body = await leerJson(c, MatchBody);
-    if (!body.ok) return body.res;
-    return c.json(puntuar(body.data.oportunidad, body.data.perfil ?? deps.perfil));
+  // Audios que Zavu descarga para enviarlos por WhatsApp/Telegram. Público a propósito: el nombre es aleatorio de 128 bits.
+  app.get('/audio/:archivo', (c) => {
+    const a = deps.audio.leer(c.req.param('archivo'));
+    if (!a) return c.json({ error: 'No existe' }, 404);
+    return c.body(new Uint8Array(a.datos), 200, { 'content-type': a.mime, 'cache-control': 'private, max-age=3600' });
   });
+
+  // Servicio público de matching (Qatom): solo perfil + oportunidad, sin datos privados ni feedback.
+  // Con MATCH_TOKEN, Qatom manda ese Authorization (se configura como "Sensitive" en el ítem); sin él, 404 como recomienda su guía.
+  // Acepta POST (JSON) o GET (query) y devuelve el id de transacción de Qatom si lo manda.
+  const match = async (c: Context) => {
+    if (deps.env.MATCH_TOKEN && !tokenValido(c.req.header('authorization'), deps.env.MATCH_TOKEN)) return c.json({ error: 'No encontrado' }, 404);
+    const datos = c.req.method === 'GET' ? c.req.query() : await c.req.json().catch(() => undefined);
+    const entrada = leerEntradaMatch(datos);
+    const transaccion = c.req.header('x-qatom-transaction-id');
+    const cabeceras = transaccion ? { 'x-qatom-transaction-id': transaccion } : undefined;
+    if (!entrada.ok) return c.json({ error: entrada.error }, 400, cabeceras);
+    return c.json({ ...puntuar(entrada.oportunidad, entrada.perfil ?? deps.perfil), ...(transaccion ? { transaction_id: transaccion } : {}) }, 200, cabeceras);
+  };
+  app.post('/match', match);
+  app.get('/match', match);
 
   // API de solo lectura para el panel (Lovable).
   app.use('/api/*', cors());
@@ -98,7 +118,7 @@ export function crearApp(deps: Deps) {
   // Disparadores de n8n: protegidos por JOBS_TOKEN.
   app.use('/jobs/*', async (c, next) => {
     const token = deps.env.JOBS_TOKEN;
-    if (!token || c.req.header('authorization') !== `Bearer ${token}`) return c.json({ error: 'No autorizado' }, 401);
+    if (!tokenValido(c.req.header('authorization'), token)) return c.json({ error: 'No autorizado' }, 401);
     await next();
   });
   app.post('/jobs/:job', async (c) => {

@@ -89,6 +89,20 @@ Probar sin n8n (mock): `curl -X POST localhost:3000/jobs/escanear -H "authorizat
 
 **n8n (gratis, self-hosted o Cloud con trial):** importa `n8n/*.json` (Workflows → Import from File). En cada uno cambia en el nodo HTTP la URL `https://TU-URL-PUBLICA` por la de tu servidor y `CAMBIA_ESTE_TOKEN` por tu `JOBS_TOKEN`, y **publica** el workflow (si no, el cron no corre). La zona horaria ya está en `America/Lima`. n8n necesita llegar a tu servidor por internet: con el túnel en local o con la URL de Maritime (Fase 7).
 
+## Voz (Fase 5: ElevenLabs)
+
+Nota de voz → texto (STT `scribe_v2`) → agente → (con `REPLY_AS_VOICE=true`) audio de respuesta (TTS `eleven_multilingual_v2`, mp3 de 64 kbps). El resumen semanal también sale hablado. Si la voz falla, siempre llega la respuesta por texto.
+
+1. Crea una cuenta en https://elevenlabs.io (plan Free: 10,000 créditos/mes; la doc pública no aclara si incluye API ni si pide tarjeta: **si te la pide, no la actives**).
+2. API key en elevenlabs.io → Developers → API Keys, y el ID de una voz en Voices (una que hable bien español).
+3. `.env`: `VOICE_MODE=real`, `ELEVENLABS_API_KEY`, `ELEVENLABS_VOICE_ID`, `REPLY_AS_VOICE=true` y `PUBLIC_URL=https://TU-URL` (Zavu no acepta bytes: baja el audio de una URL pública, que sirve nuestro servidor en `/audio/<nombre-aleatorio>`; se borra a las 72 h).
+4. Para ahorrar créditos, lo que se pronuncia se acorta a ~900 caracteres y se omiten enlaces y emojis (siguen en el texto).
+
+## Panel y monetización (Fase 8)
+
+- **Panel (Lovable):** prompt listo en [dashboard/PROMPT.md](dashboard/PROMPT.md). Usa `PANEL_TOKEN`, un token que solo lee `/api/*`.
+- **Qatom:** guía en [deploy/qatom.md](deploy/qatom.md) para publicar `/match` (puntaje 0–100 por llamada). Con `MATCH_TOKEN` el endpoint responde 404 sin el Bearer correcto.
+
 ## Despliegue (Fase 7: Maritime)
 
 `Dockerfile` listo (Node 24, SQLite en `/data`). Guía paso a paso en [deploy/maritime.md](deploy/maritime.md): repo en GitHub → `maritime create radar --repo … --public --port 3000` → variables con `maritime env import` → poner la URL pública en el webhook de Zavu y en los workflows de n8n. En producción (`NODE_ENV=production`) `/ask`, `/chat` y `/api/*` exigen `Authorization: Bearer $API_TOKEN` (la URL pública no tiene login).
@@ -102,7 +116,8 @@ Probar la imagen en local: `docker build -t radar . && docker run --rm -p 3000:3
 | `POST /chat` `{ message, source? }` | Contrato de Maritime para contenedores propios; devuelve `{ response }` (mismo token que `/ask`) |
 | `GET /health` | Muestra qué integraciones están en mock y cuáles en real |
 | `POST /ask` `{ text, usuario? }` | Conversa con el agente |
-| `POST /match` `{ oportunidad, perfil? }` | Puntaje 0–100 y razones (servicio público para Qatom) |
+| `POST /match` (o `GET`) | Puntaje 0–100 y razones para Qatom. Forma anidada `{ oportunidad, perfil? }` o plana (`titulo`, `tipo`, `intereses`…). Con `MATCH_TOKEN` exige Bearer |
+| `GET /audio/<archivo>` | Audios que Zavu descarga para enviarlos (nombre aleatorio de 128 bits) |
 | `GET /api/oportunidades?estado=&tipo=` | Lista para el panel |
 | `GET /api/postulaciones`, `GET /api/estadisticas` | Datos para el panel |
 | `POST /jobs/{escanear,recordar-plazos,resumen-semanal}` | Disparadores de n8n (requieren `Authorization: Bearer $JOBS_TOKEN`) |
@@ -118,13 +133,15 @@ Probar la imagen en local: `docker build -t radar . && docker run --rm -p 3000:3
 | Tavily | ✅ real probado con Gemini (búsqueda, plazos, sin duplicados) · mock sin llave |
 | Apify | ✅ real probado con `apify/cheerio-scraper` en PRONABEC y OSIPTEL · mock sin llave |
 | Zavu (Telegram / WhatsApp) | ✅ implementado y probado con tests sin red (firma, envío, dedupe, dueño único) · **falta probarlo con tu cuenta** (ver pasos arriba) |
-| ElevenLabs | mock · real pendiente (Fase 5) |
+| ElevenLabs | ✅ STT y TTS implementados con tests sin red · **sin probar con tu llave** |
 
 ## Pendiente
 
 - Los workflows de n8n están escritos con el formato de exportación de n8n pero **no se han importado en una instancia real**; si n8n protesta por algún campo, impórtalo y vuelve a exportarlo. El resumen semanal en **audio** llega con la Fase 5 (hoy va en texto).
 
-- Notas de voz y audios salientes por Zavu (Fase 5): la API de audio de Zavu pide una **URL pública HTTPS** del archivo, no bytes, y la doc no explica cómo bajar el audio de un mensaje entrante; hoy el bot responde que aún no entiende audios.
+- **Audio entrante por Zavu:** la doc no explica cómo bajar la nota de voz. Se intenta con `content.mediaUrl` del webhook y, si no viene, con `GET /v1/messages/{id}` (reintentando con tu llave si la URL pide autenticación). No está verificado con un mensaje real; si falla, el bot responde "No pude escuchar tu nota de voz" y el log dice el paso.
+- **Audio saliente por Telegram:** Zavu documenta audio para WhatsApp; para Telegram solo lista texto, foto, documento, ubicación y contacto. Si no lo acepta, la respuesta cae a texto.
+- Qatom: faltan por verificar el método y el cuerpo exactos que manda al endpoint (ver deploy/qatom.md).
 - WhatsApp con Zavu: sin probar (necesita número propio sin WhatsApp). Los avisos proactivos fuera de 24 h requerirían plantillas aprobadas.
 
 - Tavily devuelve sobre todo portales agregadores (practicas.pe, Jobted…) y pocas ofertas individuales; la mayoría sale **sin plazo** (la página no lo trae en el resumen). Es un límite de la fuente, no se inventa la fecha.

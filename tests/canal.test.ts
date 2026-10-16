@@ -180,14 +180,15 @@ describe('webhook /webhook/zavu', () => {
     expect(enviados[0].text).toMatch(/Tu ID es 123456789.*ALLOWED_SENDERS/);
   });
 
-  it('acuses de entrega y audios no rompen nada', async () => {
+  it('un acuse de entrega no hace nada y un audio sin URL avisa que no se pudo escuchar', async () => {
     const { app, enviados } = montar();
+    vi.spyOn(console, 'error').mockImplementation(() => {});
     const acuse = JSON.stringify({ type: 'message.delivered', data: { from: '123456789' } });
     expect((await enviar(app, acuse)).status).toBe(200);
     await enviar(app, evento('', { messageType: 'audio', text: undefined }, 'msg_voz'));
     await app.mensajeria.inactivo();
     expect(enviados).toHaveLength(1);
-    expect(enviados[0].text).toMatch(/notas de voz/);
+    expect(enviados[0].text).toMatch(/No pude escuchar/);
   });
 
   it('si Zavu falla al responder, el servidor sigue vivo', async () => {

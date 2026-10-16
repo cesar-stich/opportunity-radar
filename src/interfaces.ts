@@ -31,7 +31,8 @@ export interface MemoryStore {
 }
 
 // ---------- Canal de mensajería (Zavu: WhatsApp / Telegram) ----------
-export type MensajeEntrante = { de: string; id?: string; texto?: string; audio?: { datos?: Uint8Array; url?: string; mime?: string } };
+export type AudioEntrante = { datos?: Uint8Array; url?: string; mime?: string; mensajeId?: string };
+export type MensajeEntrante = { de: string; id?: string; texto?: string; audio?: AudioEntrante };
 
 export interface Channel {
   nombre: string;
@@ -39,6 +40,8 @@ export interface Channel {
   recibir(req: Request): Promise<MensajeEntrante | null>;
   enviarTexto(para: string, texto: string): Promise<void>;
   enviarAudio(para: string, audio: Uint8Array, mime: string): Promise<void>;
+  // Baja el archivo de una nota de voz entrante (cada proveedor lo entrega distinto). Opcional.
+  obtenerAudio?(audio: AudioEntrante): Promise<{ datos: Uint8Array; mime: string }>;
 }
 
 // ---------- Voz (ElevenLabs) ----------

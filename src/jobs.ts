@@ -3,6 +3,7 @@ import { descubrir } from './agent/descubrimiento';
 import { puntuar } from './agent/scoring';
 import { linea, senales } from './agent/tools';
 import * as repo from './db/repo';
+import { textoParaVoz } from './util/voz';
 import type { Deps } from './deps';
 import { hoyISO, sumarDias } from './util/texto';
 
@@ -103,7 +104,17 @@ export async function resumenSemanal(deps: Deps, agente: Agente, hoy = hoyISO())
     : '🗓️ Resumen de la semana: no tengo oportunidades vigentes. Pídeme que busque algo nuevo.';
   await deps.canal.enviarTexto(para, texto);
   if (top.length) agente.establecerLista(para, top.map((o) => o.id));
-  return { ok: true, avisados: top.length, detalle: `${vigentes.length} vigentes, ${cierran} cierran en 7 días` };
+  // Con REPLY_AS_VOICE el resumen también va hablado. Si la voz falla, el texto ya salió: se avisa pero el job no falla.
+  const errores: string[] = [];
+  if (deps.env.REPLY_AS_VOICE) {
+    try {
+      const { audio, mime } = await deps.voz.sintetizar(textoParaVoz(texto));
+      await deps.canal.enviarAudio(para, audio, mime);
+    } catch (e) {
+      errores.push(`audio: ${(e as Error).message}`);
+    }
+  }
+  return { ok: true, avisados: top.length, detalle: `${vigentes.length} vigentes, ${cierran} cierran en 7 días`, ...(errores.length ? { errores } : {}) };
 }
 
 export const JOBS = { escanear, 'recordar-plazos': recordarPlazos, 'resumen-semanal': resumenSemanal } as const;

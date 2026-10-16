@@ -33,9 +33,15 @@ const EnvSchema = z.object({
   ATOMICMEMORY_API_KEY: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),
   APIFY_TOKEN: z.string().optional(),
+  // URL pública del servidor (Maritime o túnel): Zavu necesita una URL para enviar audios.
+  PUBLIC_URL: z.string().optional(),
   JOBS_TOKEN: z.string().optional(),
   // Protege /ask, /chat y /api/*. En producción (NODE_ENV=production) es obligatorio: la URL pública no tiene login.
   API_TOKEN: z.string().optional(),
+  // Solo lectura: lo usa el panel web (Lovable), que lo lleva en el navegador. Acepta GET /api/* y nada más.
+  PANEL_TOKEN: z.string().optional(),
+  // Si se define, /match exige `Authorization: Bearer <MATCH_TOKEN>` (el que se pone en el ítem de Qatom).
+  MATCH_TOKEN: z.string().optional(),
   NODE_ENV: z.string().default('development'),
   NOTIFY_MIN_SCORE: z.coerce.number().default(70),
   ZAVU_MODE: modo,

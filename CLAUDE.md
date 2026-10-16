@@ -196,14 +196,14 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 2 — Memoria** (2026-10-16): AtomicMemory real. **Modo activo: Cloud** (api.atomicstrata.ai, plan Basic: 10,000 operaciones/mes; ingest = 3, search = 1). Probado en local (Docker) y en Cloud: después de reiniciar, con SQLite vacío, una oferta nueva en "Lima Norte" baja de 76 a 46.
 - [x] **Fase 3 — Descubrimiento** (2026-10-16): **Tavily real** probado con Gemini (`buscar_oportunidades`: guarda, puntúa y no duplica al repetir) y **Apify real** (`apify/cheerio-scraper`) probado en PRONABEC y OSIPTEL. `enriquecer` implementado con tests, sin probar con llave real. 27 tests.
 - [x] **Fase 4 — Canal** (2026-10-16): `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
-- [ ] Fase 5 — Voz (ElevenLabs)
+- [x] **Fase 5 — Voz** (2026-10-16): `ElevenLabsVoice` (STT `scribe_v2`, TTS `eleven_multilingual_v2`), audio entrante/saliente por Zavu, `REPLY_AS_VOICE` y resumen semanal hablado. 83 tests sin red. **Sin probar con llave real**; el audio entrante y el audio por Telegram dependen de detalles que la doc de Zavu no cubre.
 - [x] **Fase 6 — n8n** (2026-10-16): jobs `escanear`, `recordar-plazos` y `resumen-semanal` con umbral y sin avisos repetidos; 3 workflows en `n8n/`. 53 tests con mocks. **Falta importarlos en n8n y probar el aviso real** (depende del canal de la Fase 4 y de una URL pública). El resumen en audio queda para la Fase 5.
 - [~] **Fase 7 — Despliegue** (2026-10-16): `Dockerfile`, `deploy/maritime.md`, `/chat` y protección con `API_TOKEN` listos; 55 tests; imagen Docker construida (599 MB) y probada en local: `/health` 200, `/ask` y `/api/*` dan 401 sin token y la base se crea en `/data`. **Falta desplegar en Maritime** (requiere repo en GitHub y tu cuenta) y poner la URL pública en Zavu y n8n.
-- [ ] Fase 8 — Panel y monetización (`/api/*` y `/match` ya funcionan; faltan `dashboard/PROMPT.md` y `deploy/qatom.md`)
+- [x] **Fase 8 — Panel y monetización** (2026-10-16): `dashboard/PROMPT.md` (kanban de solo lectura con `PANEL_TOKEN`), `deploy/qatom.md` y `/match` listo para Qatom. **Falta crear el panel en Lovable y el ítem en Qatom** (cuentas tuyas).
 
 ### Orden sugerido (cambio respecto al plan original)
 
-Siguiente: 1) Desplegar en Maritime y conectar Zavu y n8n con esa URL → 2) Fase 5 (voz) → 3) Fase 8 (panel y `/match`) → 4) Conectar y probar todo con las cuentas reales (Zavu, n8n) ya con la URL de Maritime.
+Todas las fases están programadas. Siguiente: 1) Desplegar en Maritime → 2) conectar Zavu y n8n con esa URL → 3) pegar las llaves (ElevenLabs, Qatom, Lovable) y probar de punta a punta (panel y `/match`) → 4) Conectar y probar todo con las cuentas reales (Zavu, n8n) ya con la URL de Maritime.
 
 ### Decisiones tomadas
 
@@ -236,6 +236,13 @@ Siguiente: 1) Desplegar en Maritime y conectar Zavu y n8n con esa URL → 2) Fas
 | 2026-10-16 | Datos en `/data` (`DB_PATH=/data/radar.db` en el Dockerfile) y cron solo en n8n | Doc: solo `/data` persiste; un agente dormido no ejecuta temporizadores internos, pero despierta en ~1 s con cualquier petición a su URL pública. |
 | 2026-10-16 | `/ask`, `/chat` y `/api/*` exigen `API_TOKEN`; en producción sin token quedan cerrados. `/match`, `/health` y el webhook (firmado) siguen públicos | La URL de Maritime es pública y sin login: sin esto cualquiera gastaría la cuota de Tavily/Gemini o leería borradores y perfil. Para el panel de Lovable (Fase 8) habrá que decidir cómo pasar el token sin exponerlo. |
 | 2026-10-16 | Ruta `POST /chat {message, source}` → `{response}` | Contrato que Maritime pide a contenedores propios (`/health` y `/chat`). |
+| 2026-10-16 | Voz: TTS con mp3 de 64 kbps y texto acortado a ~900 caracteres sin enlaces ni emojis (`src/util/voz.ts`) | El plan Free de ElevenLabs da 10,000 créditos/mes (1 crédito ≈ 1 carácter); la página de precios no aclara si el plan Free incluye API. Los enlaces no se leen: van en el texto. |
+| 2026-10-16 | Audio saliente: se guarda en `/data/audio` y se sirve en `GET /audio/<32 hex>.mp3` (público, aleatorio, 72 h); requiere `PUBLIC_URL` | La doc de audio de Zavu exige una URL pública HTTPS viva ≥ 24 h, no acepta bytes. |
+| 2026-10-16 | Audio entrante: `content.mediaUrl` del webhook, o `GET /v1/messages/{id}`, con reintento autenticado. **No verificado** | La doc de Zavu no describe la descarga de media entrante (`list attachments` es solo para email). |
+| 2026-10-16 | `REPLY_AS_VOICE=true` hace que las notas de voz se respondan con audio (con texto de respaldo si falla) y que el resumen semanal salga también hablado; los mensajes de texto siguen respondiéndose por texto | Interpretación del interruptor del plan; es lo que menos sorprende. |
+| 2026-10-16 | Tres tokens distintos: `API_TOKEN` (todo lo privado), `PANEL_TOKEN` (solo `GET /api/*`, va en el navegador del panel), `MATCH_TOKEN` (solo `/match`); comparación en tiempo constante (`src/util/token.ts`) | Un token en el navegador no debe permitir hablar con el agente ni gastar cuota; Qatom manda su propio `Authorization`. |
+| 2026-10-16 | `/match` acepta forma anidada y plana, `POST` y `GET`, errores `{code, message, next_step}`, responde 404 si falta el token y devuelve `X-Qatom-Transaction-Id` | La guía de Qatom (qatom.ai/learn/charge-ai-agents-per-api-call) pide esos detalles; no documenta el método ni el cuerpo exactos, por eso se aceptan ambos. |
+| 2026-10-16 | Panel de solo lectura (sin endpoints de escritura) | Es lo que pide la Fase 8; el estado de cada oportunidad se cambia por el chat. Escribir desde un navegador público exigiría exponer un token con permisos de escritura. |
 | 2026-10-16 | pnpm 11 exige aprobar los build scripts: `allowBuilds: esbuild: true` en `pnpm-workspace.yaml` | Sin esto, `pnpm install` falla. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)

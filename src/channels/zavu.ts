@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import type { Channel, MensajeEntrante } from '../interfaces';
+import type { AudioEntrante, Channel, MensajeEntrante } from '../interfaces';
+import type { AlmacenAudio } from '../voice/almacen';
 import { aTextoPlano } from '../util/formato';
 
 // Zavu = solo transporte de mensajes (WhatsApp primero, Telegram de respaldo). El cerebro está en el servidor.
@@ -76,7 +77,14 @@ export function partirTexto(texto: string, max = MAX_TEXTO): string[] {
 
 type EventoZavu = {
   type?: string;
-  data?: { messageId?: string; from?: string; channel?: string; messageType?: string; text?: string; content?: { mimeType?: string; mediaId?: string } };
+  data?: {
+    messageId?: string;
+    from?: string;
+    channel?: string;
+    messageType?: string;
+    text?: string;
+    content?: { mimeType?: string; mediaId?: string; mediaUrl?: string };
+  };
 };
 
 export class ZavuChannel implements Channel {
@@ -85,6 +93,7 @@ export class ZavuChannel implements Channel {
     private apiKey?: string,
     private webhookSecret?: string,
     private senderId?: string,
+    private almacen?: AlmacenAudio,
   ) {}
 
   private get canal() {
@@ -105,31 +114,65 @@ export class ZavuChannel implements Channel {
     const d = ev.data;
     if (!d?.from) return null;
     const base = { de: d.from, id: d.messageId };
-    if (d.messageType === 'audio' || d.messageType === 'voice') return { ...base, audio: { mime: d.content?.mimeType } };
-    // Otros tipos (imagen, ubicación…) se ignoran por ahora: solo texto y, en la Fase 5, audio.
+    if (d.messageType === 'audio' || d.messageType === 'voice')
+      return { ...base, audio: { mime: d.content?.mimeType, url: d.content?.mediaUrl, mensajeId: d.messageId } };
+    // Otros tipos (imagen, ubicación…) se ignoran: solo texto y notas de voz.
     return d.text?.trim() ? { ...base, texto: d.text.trim() } : null;
   }
 
-  async enviarTexto(para: string, texto: string): Promise<void> {
+  private cabeceras() {
     if (!this.apiKey) throw new Error('CHANNEL real requiere ZAVU_API_KEY en .env');
-    // Zavu no garantiza el formato Markdown del LLM en cada canal: mandamos texto limpio y legible.
-    for (const trozo of partirTexto(aTextoPlano(texto, this.canal))) {
-      const res = await fetch(API, {
-        method: 'POST',
-        headers: {
-          'content-type': 'application/json',
-          authorization: `Bearer ${this.apiKey}`,
-          ...(this.senderId ? { 'zavu-sender': this.senderId } : {}),
-        },
-        body: JSON.stringify({ to: para, text: trozo, channel: this.canal }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      if (!res.ok) throw new Error(`Zavu ${res.status}: ${(await res.text()).slice(0, 300)}`);
-    }
+    return {
+      'content-type': 'application/json',
+      authorization: `Bearer ${this.apiKey}`,
+      ...(this.senderId ? { 'zavu-sender': this.senderId } : {}),
+    };
   }
 
-  // La API de audio de Zavu pide una URL pública (HTTPS, 24 h disponible), no bytes: se resuelve en la Fase 5.
-  async enviarAudio(): Promise<void> {
-    throw new Error('Enviar audio por Zavu: pendiente Fase 5 (requiere una URL pública para el archivo)');
+  private async enviar(cuerpo: Record<string, unknown>): Promise<void> {
+    const res = await fetch(API, {
+      method: 'POST',
+      headers: this.cabeceras(),
+      body: JSON.stringify({ channel: this.canal, ...cuerpo }),
+      signal: AbortSignal.timeout(20_000),
+    });
+    if (!res.ok) throw new Error(`Zavu ${res.status}: ${(await res.text()).slice(0, 300)}`);
+  }
+
+  async enviarTexto(para: string, texto: string): Promise<void> {
+    // Zavu no garantiza el formato Markdown del LLM en cada canal: mandamos texto limpio y legible.
+    for (const trozo of partirTexto(aTextoPlano(texto, this.canal))) await this.enviar({ to: para, text: trozo });
+  }
+
+  // Zavu pide una URL pública del audio (no bytes): lo guardamos en el servidor y le pasamos el enlace.
+  async enviarAudio(para: string, audio: Uint8Array, mime: string): Promise<void> {
+    if (!this.almacen) throw new Error('Enviar audio requiere PUBLIC_URL en .env');
+    const mediaUrl = this.almacen.guardar(audio, mime);
+    await this.enviar({ to: para, messageType: 'audio', content: { mediaUrl } });
+  }
+
+  // La doc de Zavu no explica cómo bajar un audio entrante. Plan: usar content.mediaUrl del webhook; si no viene,
+  // pedirlo con GET /v1/messages/{id}. Si la URL exige autenticación se reintenta con la llave de Zavu.
+  // NO VERIFICADO con un mensaje real: si falla, el error dice en qué paso.
+  async obtenerAudio(audio: AudioEntrante): Promise<{ datos: Uint8Array; mime: string }> {
+    let url = audio.url;
+    let mime = audio.mime;
+    if (!url && audio.mensajeId) {
+      const res = await fetch(`https://api.zavu.dev/v1/messages/${encodeURIComponent(audio.mensajeId)}`, {
+        headers: this.cabeceras(),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!res.ok) throw new Error(`Zavu no entregó el mensaje ${audio.mensajeId} (${res.status})`);
+      const m = (await res.json()) as { message?: { content?: { mediaUrl?: string; mimeType?: string } } };
+      url = m.message?.content?.mediaUrl;
+      mime ??= m.message?.content?.mimeType;
+    }
+    if (!url) throw new Error('Zavu no incluyó una URL para el audio entrante (content.mediaUrl); ver "Pendiente" en el README');
+    let res = await fetch(url, { signal: AbortSignal.timeout(30_000) });
+    if (res.status === 401 || res.status === 403) {
+      res = await fetch(url, { headers: { authorization: `Bearer ${this.apiKey}` }, signal: AbortSignal.timeout(30_000) });
+    }
+    if (!res.ok) throw new Error(`No se pudo bajar el audio (${res.status})`);
+    return { datos: new Uint8Array(await res.arrayBuffer()), mime: mime ?? res.headers.get('content-type') ?? 'audio/ogg' };
   }
 }
