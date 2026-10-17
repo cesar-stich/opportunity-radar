@@ -58,6 +58,10 @@ export function crearApp(deps: Deps) {
     if (credencial(c, API_TOKEN)) return next();
     const soloLectura = c.req.method === 'GET' && c.req.path.startsWith('/api/');
     if (soloLectura && credencial(c, PANEL_TOKEN)) return next();
+    // El borde de Maritime rechaza el preflight CORS de otros orígenes (Lovable), así que el panel no puede mandar
+    // cabeceras propias: pasa el PANEL_TOKEN (solo lectura) en la URL, una petición GET simple que no hace preflight.
+    const enUrl = c.req.query('token');
+    if (soloLectura && enUrl && tokenValido(`Bearer ${enUrl}`, PANEL_TOKEN)) return next();
     if (!API_TOKEN && NODE_ENV === 'production') return c.json({ error: 'API_TOKEN no configurado' }, 401);
     return c.json({ error: 'No autorizado' }, 401);
   };

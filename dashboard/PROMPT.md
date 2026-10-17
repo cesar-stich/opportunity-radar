@@ -8,7 +8,7 @@ Panel web **de solo lectura** (kanban) que muestra lo que encontró el agente. L
 2. En Lovable, crea el proyecto y pega el prompt de abajo. Cuando Lovable pida las variables (o en Project settings → Environment variables) pon:
    - `VITE_API_URL` = la URL pública de tu servidor, sin `/` final (ej. `https://radar-cesar.maritime.app`).
    - `VITE_PANEL_TOKEN` = tu `PANEL_TOKEN`.
-3. Prueba en el navegador antes: `curl https://TU-URL/api/estadisticas -H "authorization: Bearer $PANEL_TOKEN"` debe devolver JSON.
+3. Prueba antes: `curl "https://TU-URL/api/estadisticas?token=$PANEL_TOKEN"` debe devolver JSON. Con Maritime el panel manda el token en la URL (`?token=`): su URL pública no reenvía `Authorization` y su borde rechaza el preflight CORS de otros orígenes, así que ni `Authorization` ni cabeceras propias sirven desde un navegador (probado). Para scripts como n8n sí vale la cabecera `X-Radar-Token`.
 
 ## Prompt para pegar en Lovable
 
@@ -18,8 +18,10 @@ hackathones, convocatorias y cursos). Es de SOLO LECTURA: no hay formularios ni 
 Usa React + TypeScript + Tailwind. Estilo oscuro, limpio y moderno, responsive (en móvil el tablero hace scroll horizontal).
 
 DATOS (API REST ya existente)
-- Base: import.meta.env.VITE_API_URL. En TODAS las peticiones envía el header
-  Authorization: Bearer ${import.meta.env.VITE_PANEL_TOKEN}.
+- Base: import.meta.env.VITE_API_URL. En TODAS las peticiones (todas son GET) agrega el token en la URL:
+  `${VITE_API_URL}/api/oportunidades?token=${import.meta.env.VITE_PANEL_TOKEN}` (con `&token=` si ya hay otros parámetros).
+  NO envíes ningún header personalizado ni Authorization: el servidor rechaza el preflight CORS y la petición fallaría.
+  Usa fetch(url) a secas, sin opciones de headers.
 - GET /api/oportunidades  →  array de objetos:
   { id, titulo, organizacion, tipo: "practica"|"beca"|"hackathon"|"convocatoria"|"curso",
     descripcion, url, ubicacion, modalidad: "presencial"|"remoto"|"hibrido",

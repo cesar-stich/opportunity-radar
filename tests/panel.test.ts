@@ -29,6 +29,13 @@ describe('panel: PANEL_TOKEN es solo lectura', () => {
     expect((await app.request('/api/oportunidades', con('otro'))).status).toBe(401);
   });
 
+  it('el panel puede pasar su token en la URL (?token=), solo para leer /api/*', async () => {
+    expect((await app.request('/api/oportunidades?token=panel')).status).toBe(200);
+    expect((await app.request('/api/estadisticas?token=otro')).status).toBe(401);
+    // El token en la URL del panel no abre nada que no sea lectura de /api/*, ni el token de admin sirve ahí como atajo.
+    expect((await app.fetch(new Request('http://local/ask?token=panel', { method: 'POST', headers: { 'content-type': 'application/json' }, body: '{"text":"hola"}' }))).status).toBe(401);
+  });
+
   it('el token del panel no sirve para conversar con el agente', async () => {
     expect((await app.fetch(json('/ask', { text: 'hola' }, { authorization: 'Bearer panel' }))).status).toBe(401);
     expect((await app.fetch(json('/chat', { message: 'hola' }, { authorization: 'Bearer panel' }))).status).toBe(401);
