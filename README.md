@@ -72,7 +72,44 @@ flowchart LR
 
 Cada integración está detrás de una interfaz (`src/interfaces.ts`) con implementación `mock` y `real`, elegida por variable de entorno (`src/deps.ts`). **Sin llaves todo corre en mock**; activas los servicios de uno en uno.
 
+### Las cinco entradas
+
+Todo llega al mismo servidor por una de estas puertas. Hay dos modos: **reactivo** (empiezas tú) y **proactivo** (empieza n8n y el agente te escribe primero).
+
+| # | Entrada | Modo | Quién la dispara | Termina en |
+| --- | --- | --- | --- | --- |
+| 1 | Chat por texto | Reactivo | Tú, en Telegram | Respuesta en texto |
+| 2 | Chat por voz | Reactivo | Tú, con una nota de voz | Respuesta en audio o texto |
+| 3 | Jobs | Proactivo | n8n por horario (`escanear`, `recordar-plazos`, `resumen-semanal`) | Aviso en Telegram |
+| 4 | Panel | Solo lectura | Lovable, con `GET /api/*` | Tablero en el navegador |
+| 5 | `/match` | Servicio externo | Qatom, con `POST /match` | Puntaje 0–100 al comprador |
+
 ## Cómo funciona
+
+### Qué hace el LLM y qué hace el código
+
+El LLM dirige y explica; los números y la lectura del texto los hace código. Así no inventa datos, no gasta tokens en lo que resuelve una regla y todo se prueba sin red.
+
+| Paso de una búsqueda por chat | Lo hace |
+| --- | --- |
+| Entender el mensaje | LLM |
+| Decidir buscar | LLM (*tool use*) |
+| Buscar en la web | Código: Tavily o Apify (`src/agent/descubrimiento.ts`) |
+| Pasar el texto crudo a oportunidad (título, plazo, tipo, lugar) | Heurísticas (`src/util/extraer.ts`) |
+| Decidir puntuar | LLM |
+| Calcular el puntaje | Código (`src/agent/scoring.ts`) |
+| Explicar el resultado | LLM |
+
+| Técnica | ¿Se usa? | Dónde |
+| --- | --- | --- |
+| Agente con herramientas | Sí | Gemini o Groq, uno a la vez según `LLM_PROVIDER` |
+| Reglas fijas | Sí | Puntaje 0–100 |
+| Heurísticas de texto (expresiones regulares y palabras clave) | Sí | Plazo, tipo y lugar de cada oportunidad |
+| Búsqueda por significado | Sí, delegada | AtomicMemory, para tus gustos |
+| Machine learning propio | No | — |
+| RAG | No | — |
+
+En los jobs automáticos el LLM no participa: n8n dispara y el código busca, puntúa y avisa.
 
 ### El bucle del agente (`src/agent/agent.ts`)
 
@@ -145,6 +182,19 @@ flowchart LR
 
 El mismo `descubrir` lo usan la herramienta del agente, `pnpm escanear` y el job `/jobs/escanear`. Una fuente caída no detiene a las demás.
 
+Tavily y Apify no se pasan datos entre sí: son dos canales en paralelo, cada uno con su tipo de fuente.
+
+| | Tavily | Apify |
+| --- | --- | --- |
+| Recibe | Una consulta de texto | Una URL fija |
+| Alcance | Toda la web (filtrada a Perú, sin bolsas de empleo ni redes) | Una sola página |
+| Sirve cuando | No sabes dónde está la oportunidad | Ya sabes qué portal mirar |
+
+`descubrir` toma uno de dos caminos:
+
+- **Con consulta** ("busca becas de IA"): solo Tavily.
+- **Sin consulta** (job `escanear`, `pnpm escanear` o "escanea las fuentes"): recorre la tabla `fuentes`. Las de tipo `tavily` van a Tavily con su consulta guardada y las de tipo `apify` a Apify con su URL. Por eso Apify trabaja sobre todo en los escaneos.
+
 ### Datos (SQLite)
 
 | Tabla | Contenido |
@@ -154,6 +204,8 @@ El mismo `descubrir` lo usan la herramienta del agente, `pnpm escanear` y el job
 | `postulaciones` | Borradores de postulación asociados a una oportunidad |
 | `feedback` | Qué aceptaste o descartaste y por qué |
 | `avisos` | Qué avisos ya se mandaron, para no repetir |
+
+SQLite es un archivo dentro del servidor (`/data` en Maritime) y guarda **qué oportunidades hay** y en qué estado. AtomicMemory es un servicio aparte que guarda **quién eres**: hechos extraídos de lo que dices (en inglés, p. ej. *"user is not interested in marketing internships"*) que se buscan por significado. Ninguno contiene al otro. Si AtomicMemory cae, el agente sigue con SQLite y solo pierde lo aprendido de tus gustos.
 
 ## Estructura
 
@@ -239,6 +291,13 @@ Un bot de Telegram solo tiene **un** webhook: si dos servidores arrancan con el 
 
 Nota de voz → texto (`scribe_v2`) → agente → (con `REPLY_AS_VOICE=true`) audio de respuesta (`eleven_multilingual_v2`). Si la voz falla, siempre llega la respuesta por texto. Para ahorrar créditos, lo que se pronuncia se acorta a ~900 caracteres sin enlaces ni emojis.
 
+| Rol de ElevenLabs | Qué hace | Modelo |
+| --- | --- | --- |
+| Oído (STT) | Nota de voz → texto | `scribe_v2` |
+| Boca (TTS) | Respuesta → audio | `eleven_multilingual_v2` |
+
+El agente siempre trabaja con texto: un mensaje escrito no pasa por ElevenLabs. Solo se responde en audio a una **nota de voz** y con `REPLY_AS_VOICE=true`; si no, llega texto con lo que se entendió («Te escuché: …»). La transcripción conserva las palabras, no el tono.
+
 ## Avisos automáticos (n8n)
 
 El agente avisa **solo** lo que vale la pena (puntaje ≥ `NOTIFY_MIN_SCORE`, 70 por defecto) y nunca repite un aviso. n8n solo dispara; la lógica está en `src/jobs.ts`.
@@ -251,6 +310,10 @@ El agente avisa **solo** lo que vale la pena (puntaje ≥ `NOTIFY_MIN_SCORE`, 70
 
 Cada job exige `JOBS_TOKEN` en `Authorization: Bearer …` o en `X-Radar-Token`. Para usarlos, importa `n8n/*.json` en n8n, cambia `https://TU-URL-PUBLICA` por la URL de tu servidor y `CAMBIA_ESTE_TOKEN` por tu `JOBS_TOKEN`, y **publica** cada workflow.
 
+- Los tres jobs son independientes y avisan al primer ID de `ALLOWED_SENDERS`.
+- `escanear` y `recordar-plazos` solo escriben si hay algo que lo merezca, así que el silencio es normal. `resumen-semanal` se manda siempre, aunque sea para decir que no hay novedades.
+- n8n no busca ni decide. Un workflow publicado corre en la nube de n8n aunque cierres el editor.
+
 ## Despliegue
 
 `Dockerfile` listo (Node 24, SQLite en `/data`). Guía en [deploy/maritime.md](deploy/maritime.md). En producción (`NODE_ENV=production`) `/ask`, `/chat` y `/api/*` exigen `API_TOKEN`, porque la URL pública no tiene login.
@@ -261,6 +324,22 @@ Probar la imagen en local: `docker build -t radar . && docker run --rm -p 3000:3
 
 - **Panel (Lovable):** prompt listo en [dashboard/PROMPT.md](dashboard/PROMPT.md). Usa `PANEL_TOKEN` (solo lee `/api/*`) en la URL, `?token=…`.
 - **Qatom:** [deploy/qatom.md](deploy/qatom.md) explica cómo publicar `/match` (puntaje 0–100 por llamada). Con `MATCH_TOKEN` el endpoint responde 404 sin el token.
+
+### Cómo funciona Qatom
+
+Qatom es un marketplace donde agentes de IA (o personas) encuentran servicios, los pagan por llamada y los usan. Aquí se vende solo `/match`, y es la única entrada que llega desde fuera: a Tavily, Apify y ElevenLabs los llama el servidor; a `/match` lo llama Qatom.
+
+```text
+Comprador → Qatom (cobra y emite el recibo) → POST /match → Servidor (scoring.ts) → puntaje y razones
+```
+
+| Quién | Hace |
+| --- | --- |
+| Tú | Fijas el precio por llamada al crear el ítem (0 para probar) |
+| Qatom | Muestra el ítem, cobra, llama a `/match` y entrega el recibo |
+| Servidor | Calcula el puntaje con la misma función que usa el agente |
+
+Qatom no calcula costos: el precio lo pones tú. `/match` no usa el LLM ni gasta créditos. En Maritime el token va en `X-Radar-Token`. Si la petición no trae perfil (`intereses`, `busca`, `ubicacion_perfil`), se usa el del dueño. El plan Free de Qatom permite 25 transacciones al mes.
 
 ## Rutas
 
