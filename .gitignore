@@ -7,3 +7,7 @@ data/
 .env.prod
 n8n/local/
 dashboard/local/
+
+# Skill de Qatom: herramienta de trabajo, no parte de la app
+.agents/
+skills-lock.json
