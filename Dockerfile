@@ -16,4 +16,5 @@ VOLUME /data
 
 # Maritime inyecta PORT; si no, 3000. El servidor escucha en 0.0.0.0.
 EXPOSE 3000
-CMD ["pnpm", "start"]
+# tsx directo (no `pnpm start`): al arrancar, corepack intentaba descargar pnpm otra vez y el contenedor no llegaba a estar listo.
+CMD ["node_modules/.bin/tsx", "src/index.ts"]
