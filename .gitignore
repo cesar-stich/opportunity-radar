@@ -6,3 +6,4 @@ data/
 
 .env.prod
 n8n/local/
+dashboard/local/

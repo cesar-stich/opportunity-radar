@@ -199,13 +199,21 @@ La raíz del repo es esta carpeta (no hay subcarpeta `radar/`).
 - [x] **Fase 3 — Descubrimiento** (2026-10-16): **Tavily real** probado con Gemini (`buscar_oportunidades`: guarda, puntúa y no duplica al repetir) y **Apify real** (`apify/cheerio-scraper`) probado en PRONABEC y OSIPTEL. `enriquecer` implementado con tests, sin probar con llave real. 27 tests.
 - [x] **Fase 4 — Canal** (2026-10-16; **canal activo cambiado a Telegram directo**, ver decisiones): texto y voz verificados de punta a punta con Telegram directo en local (túnel cloudflared). Antes: `ZavuChannel` (Telegram por defecto, WhatsApp con `CHANNEL=zavu-whatsapp`) con firma `X-Zavu-Signature`, dedupe, respuesta en segundo plano y dueño único (`ALLOWED_SENDERS`). 44 tests sin red. **Falta la prueba con la cuenta real de Zavu** (pasos en el README): hasta entonces el criterio "conversación real" no está verificado.
 - [x] **Fase 5 — Voz** (2026-10-16; **verificada con llave real el 2026-10-16** por Telegram directo: nota de voz entra → STT → agente → TTS → `audio.mp3` sale; el resumen hablado por `/jobs` sigue sin probar): `ElevenLabsVoice` (STT `scribe_v2`, TTS `eleven_multilingual_v2`), audio entrante/saliente por Zavu, `REPLY_AS_VOICE` y resumen semanal hablado. 83 tests sin red. **Sin probar con llave real**; el audio entrante y el audio por Telegram dependen de detalles que la doc de Zavu no cubre.
-- [x] **Fase 6 — n8n** (2026-10-16): jobs `escanear`, `recordar-plazos` y `resumen-semanal` con umbral y sin avisos repetidos; 3 workflows en `n8n/`. 53 tests con mocks. **Falta importarlos en n8n y probar el aviso real** (depende del canal de la Fase 4 y de una URL pública). El resumen en audio queda para la Fase 5.
-- [~] **Fase 7 — Despliegue** (2026-10-16): `Dockerfile`, `deploy/maritime.md`, `/chat` y protección con `API_TOKEN` listos; 55 tests; imagen Docker construida (599 MB) y probada en local: `/health` 200, `/ask` y `/api/*` dan 401 sin token y la base se crea en `/data`. **Falta desplegar en Maritime** (requiere repo en GitHub y tu cuenta) y poner la URL pública en Zavu y n8n.
-- [x] **Fase 8 — Panel y monetización** (2026-10-16): `dashboard/PROMPT.md` (kanban de solo lectura con `PANEL_TOKEN`), `deploy/qatom.md` y `/match` listo para Qatom. **Falta crear el panel en Lovable y el ítem en Qatom** (cuentas tuyas).
+- [x] **Fase 6 — n8n** (2026-10-16; **verificada**): jobs `escanear`, `recordar-plazos` y `resumen-semanal` con umbral y sin avisos repetidos; 3 workflows importados en **n8n Cloud** (prueba de 14 días, 1000 ejecuciones, sin tarjeta), **ejecutados con éxito y publicados** (8:00, 9:00 y domingos 19:00, `America/Lima`). El escaneo real desde n8n trajo 8 oportunidades a Maritime. Usan la cabecera `X-Radar-Token`. 94 tests.
+- [x] **Fase 7 — Despliegue** (2026-10-16; **verificada**): agente **`radar` en Maritime** (plan Free, sin tarjeta), repo privado `cesar-stich/opportunity-radar`. `/health` 200 por la URL pública, bot de Telegram respondiendo texto y voz con la laptop sin servidor, webhook de Telegram apuntando a Maritime. URL: `https://api.maritime.sh/a/<id del agente>` (el id está en `maritime status radar`). Falta: probar el "sleep" tras 20+ min sin uso.
+- [x] **Fase 8 — Panel y monetización** (2026-10-16): **panel de Lovable funcionando con datos reales** (8 oportunidades, kanban) usando `?token=`; **ítem "Radar Match" creado en Qatom** (plan Free, precio 0, activo y público, cabecera `X-Radar-Token`). `/match` verificado en Maritime (200 con puntaje, 404 sin token, 400 si es inválido). **Falta la compra de prueba desde Qatom**: su dashboard no tiene botón de compra para el vendedor y no se vio qué método y cuerpo manda Qatom.
 
-### Orden sugerido (cambio respecto al plan original)
+### Orden sugerido
 
-Todas las fases están programadas. Siguiente: 1) Desplegar en Maritime → 2) conectar Zavu y n8n con esa URL → 3) pegar las llaves (ElevenLabs, Qatom, Lovable) y probar de punta a punta (panel y `/match`) → 4) Conectar y probar todo con las cuentas reales (Zavu, n8n) ya con la URL de Maritime.
+Todo está desplegado y probado salvo lo de "Pendiente". Siguiente: rotar las llaves que se pegaron en el chat (Zavu, ElevenLabs, token del bot de Telegram, secreto del webhook de Zavu), probar el sleep de Maritime y la compra de prueba en Qatom, y actualizar el README (aún habla de Zavu como canal).
+
+### Pendiente (2026-10-16)
+
+- Rotar llaves expuestas en el chat: `ZAVU_API_KEY`, `ELEVENLABS_API_KEY`, `TELEGRAM_BOT_TOKEN` (BotFather → Revoke) y el secreto del webhook de Zavu; actualizar `.env` y `maritime env set radar … --reload`.
+- Compra de prueba en Qatom (método y cuerpo reales que envía).
+- Sleep de Maritime (20+ min sin uso).
+- README: actualizar el canal activo (Telegram directo).
+- Voz: `enriquecer` y Groq siguen sin probarse con llave real.
 
 ### Decisiones tomadas
 
@@ -251,6 +259,11 @@ Todas las fases están programadas. Siguiente: 1) Desplegar en Maritime → 2) c
 | 2026-10-16 | Zavu `from` llega como `telegram:<id>`: se quita el prefijo al recibir | Para responder, la API pide solo el chat id numérico (error 400 si no). |
 | 2026-10-16 | ElevenLabs Free no puede usar voces de la biblioteca por API (402 `paid_plan_required`): se usa una voz predeterminada (Roger, `CwhRBWXzGAHq8TQ4Fs17`) | Verificado con la llave real. La llave se creó con permisos solo de TTS y STT (sin `voices_read`, no hace falta). |
 | 2026-10-16 | Prompt: los enlaces se copian completos como texto, sin `{url_1}` ni `[texto](enlace)` | Gemini flash-lite inventó una plantilla en vez de copiar la URL. Los enlaces `example.com` son de `pnpm seed` (ficticias). |
+| 2026-10-16 | **Maritime no reenvía `Authorization` al contenedor y su borde rechaza el preflight CORS de otros orígenes** (400 "Disallowed CORS origin"): el token se acepta también en la cabecera `X-Radar-Token` (jobs, `/api/*`, `/ask`, `/match`) y el panel usa `?token=` en un GET simple | Probado en producción: los mismos tokens daban 401/404 con `Authorization: Bearer`. n8n y Qatom permiten cabeceras propias; Lovable corre en el navegador y no puede hacer preflight. El `PANEL_TOKEN` en la URL solo vale para leer `/api/*`. |
+| 2026-10-16 | Dockerfile arranca con `node_modules/.bin/tsx src/index.ts`, no con `pnpm start` | En Maritime `pnpm start` hacía que corepack descargara pnpm otra vez al iniciar, el gateway no confirmaba listo y la URL daba 502. |
+| 2026-10-16 | Maritime: `PORT=3000` explícito, `PUBLIC_URL` con la URL del agente; la primera construcción se quedó atascada y hubo que borrar y recrear el agente (un despliegue en `building` no se puede cancelar: `deployments cancel` no surtió efecto y `deploy` responde 409) | La plataforma tardó ~10 min en la primera construcción; las siguientes, ~3 min. `maritime env import` falla con un BOM: escribir `.env.prod` sin BOM. |
+| 2026-10-16 | n8n Cloud en vez de self-hosted; workflows con la URL y el token reales en `n8n/local/` (ignorado por git) | Self-hosted no corre con la laptop apagada. Los JSON de `n8n/` quedan con marcadores. |
+| 2026-10-16 | Qatom: ítem "Radar Match" gratis (precio 0) con cabecera sensible `X-Radar-Token`; endpoint `…/a/<id>/match` | Plan Free, sin tarjeta. No hay compra de prueba para el vendedor en el dashboard. |
 | 2026-10-16 | Zavu se mantiene como respaldo opcional, no como función propia | Idea descartada por ahora: envío de respaldo por Zavu si falla Telegram. Si hay tiempo, es poco trabajo y gasta el cupo gratis de 2,000 mensajes/mes. |
 
 ### Sin verificar todavía (se revisa al empezar su fase)

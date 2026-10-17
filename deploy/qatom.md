@@ -17,13 +17,14 @@ Cobrar de verdad requiere conectar un método de cobro (Stripe, USDC…); **no l
    openssl rand -hex 24                       # copia el resultado
    maritime env set radar MATCH_TOKEN=<ese valor> --reload
    ```
-   Con `MATCH_TOKEN` definido, `/match` responde **404** a cualquiera que no mande `Authorization: Bearer <MATCH_TOKEN>` (así lo recomienda Qatom). Sin él, `/match` queda abierto: úsalo solo en pruebas.
+   Con `MATCH_TOKEN` definido, `/match` responde **404** a cualquiera que no mande el token (así lo recomienda Qatom). Sin él, `/match` queda abierto: úsalo solo en pruebas.
+   **En Maritime el token va en la cabecera `X-Radar-Token: <MATCH_TOKEN>` (el valor suelto, sin "Bearer")**, no en `Authorization`: la URL pública de Maritime no reenvía `Authorization` al contenedor (probado: 404 con el token correcto). Local acepta las dos.
 2. **Prueba el endpoint tú mismo** antes de tocar Qatom (un fallo se ve como "error de pago" genérico):
    ```bash
-   curl -X POST https://TU-URL/match -H "content-type: application/json" -H "authorization: Bearer $MATCH_TOKEN" \
+   curl -X POST https://TU-URL/match -H "content-type: application/json" -H "x-radar-token: $MATCH_TOKEN" \
      -d '{"titulo":"Beca de IA","tipo":"beca","descripcion":"curso de inteligencia artificial","ubicacion":"Lima","intereses":"IA, cloud","busca":"becas","ubicacion_perfil":"Lima, Perú"}'
    ```
-   Debe responder `{"puntaje":…,"razones":[…]}`.
+   Debe responder `{"puntaje":…,"razones":[…]}`. (En PowerShell las comillas del JSON se rompen: guárdalo en un archivo y usa `--data-binary @archivo.json`.) Verificado el 2026-10-16 en Maritime: 200 con puntaje 76; sin token 404; tipo inválido 400.
 3. **Cuenta:** entra a https://dashboard.m.todaq.net/ (dashboard de Qatom) y crea la cuenta Free.
 4. **Crear ítem de catálogo** (name, receipt descriptor, price, method, endpoint, description, input schema, headers):
    - **Nombre:** `Radar Match — puntaje de oportunidades`
@@ -31,7 +32,7 @@ Cobrar de verdad requiere conectar un método de cobro (Stripe, USDC…); **no l
    - **Precio:** `0.001` USD-TDN por llamada (mínimo; `0` lo deja gratis para la demo).
    - **Endpoint:** `https://TU-URL/match` — **sin secretos en la URL**.
    - **Método:** `POST`.
-   - **Request headers & secret parameters:** `Authorization` = `Bearer <MATCH_TOKEN>` marcado como **Sensitive**.
+   - **Request headers & secret parameters:** nombre `X-Radar-Token`, valor = tu `MATCH_TOKEN` (solo el valor, sin "Bearer"), marcado como **Sensitive**. (No uses `Authorization`: Maritime lo quita.)
    - **Input schema** (pégalo en el editor como está y pulsa Format):
 
 ```json
