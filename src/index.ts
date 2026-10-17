@@ -21,8 +21,6 @@ serve({ fetch: crearApp(deps).fetch, port: env.PORT, hostname: '0.0.0.0' }, (inf
           .then(() => console.log(`   Webhook de Telegram registrado: ${env.PUBLIC_URL}/webhook/telegram`))
           .catch((e) => console.error('   ❌ No se pudo registrar el webhook de Telegram:', (e as Error).message));
       }
-    } else {
-      console.log(`   Webhook para Zavu: <URL pública>/webhook/zavu  (eventos: message.inbound, conversation.new)`);
     }
     if (!env.ALLOWED_SENDERS.length) console.warn('   ⚠️ ALLOWED_SENDERS vacío: escríbele al bot y te dirá tu ID para ponerlo en .env');
   }

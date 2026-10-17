@@ -1,16 +1,31 @@
 import { timingSafeEqual } from 'node:crypto';
 import type { AudioEntrante, Channel, MensajeEntrante } from '../interfaces';
 import { aTextoPlano } from '../util/formato';
-import { FirmaInvalida, partirTexto } from './zavu';
 
-// Telegram directo (Bot API, https://core.telegram.org/bots/api). Se usa en vez de Zavu porque Zavu no nos pasa
-// las notas de voz de Telegram (llegan como texto vacío, sin file_id). Aquí el webhook es de Telegram mismo:
+// Telegram (Bot API, https://core.telegram.org/bots/api). El webhook es de Telegram mismo:
 //  - Recibir: `setWebhook` con `secret_token`; Telegram lo manda en `X-Telegram-Bot-Api-Secret-Token`.
 //  - Audio entrante: el update trae `voice.file_id` → `getFile` → descarga desde /file/bot<token>/<file_path>.
 //  - Enviar: `sendMessage` (texto) y `sendVoice`/`sendAudio` (bytes por multipart: no hace falta URL pública).
-// Un bot solo puede tener un webhook: al registrar este, Zavu deja de recibir los mensajes de ese bot.
+// Un bot solo puede tener un webhook: dos servidores con el mismo token se pisan.
 
 const API = 'https://api.telegram.org';
+const MAX_TEXTO = 3500; // Telegram acepta 4096 caracteres; dejamos margen
+
+export class FirmaInvalida extends Error {}
+
+// Parte un texto largo en trozos, cortando en salto de línea o espacio.
+export function partirTexto(texto: string, max = MAX_TEXTO): string[] {
+  const trozos: string[] = [];
+  let resto = texto.trim();
+  while (resto.length > max) {
+    const corte = Math.max(resto.lastIndexOf('\n', max), resto.lastIndexOf(' ', max));
+    const n = corte > max / 2 ? corte : max;
+    trozos.push(resto.slice(0, n).trim());
+    resto = resto.slice(n).trim();
+  }
+  if (resto) trozos.push(resto);
+  return trozos;
+}
 
 type Update = {
   update_id?: number;
@@ -70,7 +85,7 @@ export class TelegramChannel implements Channel {
   }
 
   async enviarTexto(para: string, texto: string): Promise<void> {
-    for (const trozo of partirTexto(aTextoPlano(texto, 'telegram'))) await this.post('sendMessage', { chat_id: para, text: trozo });
+    for (const trozo of partirTexto(aTextoPlano(texto))) await this.post('sendMessage', { chat_id: para, text: trozo });
   }
 
   // sendVoice solo acepta OGG/Opus; ElevenLabs entrega mp3, que va por sendAudio.

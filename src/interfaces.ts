@@ -11,7 +11,7 @@ export type Mensaje =
   | { role: 'assistant'; text?: string; toolCalls?: ToolCall[]; raw?: unknown }
   | { role: 'tool'; results: { id: string; name: string; result: unknown }[] };
 
-// JSON Schema simple (subconjunto compatible con Gemini, Groq/OpenAI y Anthropic).
+// JSON Schema simple (subconjunto compatible con Gemini y Groq/OpenAI).
 export type ToolSpec = { name: string; description: string; parameters: Record<string, unknown> };
 
 export type RespuestaLLM = { text?: string; toolCalls?: ToolCall[]; raw?: unknown };
@@ -30,8 +30,8 @@ export interface MemoryStore {
   buscar(consulta: string, limite?: number): Promise<Recuerdo[]>;
 }
 
-// ---------- Canal de mensajería (Zavu: WhatsApp / Telegram) ----------
-export type AudioEntrante = { datos?: Uint8Array; url?: string; mime?: string; mensajeId?: string };
+// ---------- Canal de mensajería (Telegram) ----------
+export type AudioEntrante = { datos?: Uint8Array; mime?: string; mensajeId?: string };
 export type MensajeEntrante = { de: string; id?: string; texto?: string; audio?: AudioEntrante };
 
 export interface Channel {

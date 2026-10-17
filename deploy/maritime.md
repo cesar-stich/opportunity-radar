@@ -1,15 +1,15 @@
 # Desplegar Radar en Maritime
 
-Maritime solo **aloja** el servidor del agente (micro-VM con Docker). Zavu transporta y n8n dispara; los dos necesitan la URL pública que te da Maritime.
+Maritime solo **aloja** el servidor del agente (micro-VM con Docker). Telegram y n8n necesitan la URL pública que te da Maritime.
 Doc consultada el 2026-10-16: https://maritime.sh/docs (CLI, `frameworks/custom`, `web-apps`, `triggers`, `limits`).
 
 ## Qué dice la doc que importa
 
-- Se despliega desde un **repo de GitHub con Dockerfile** (`maritime create … --repo`). **No existe `git push maritime main`** (CLAUDE.md lo decía; corregido).
-- `--public` da una URL pública **sin login**: por eso `/ask`, `/chat` y `/api/*` exigen `API_TOKEN` en producción, `/webhook/zavu` exige la firma de Zavu y `/jobs/*` exige `JOBS_TOKEN`.
+- Se despliega desde un **repo de GitHub con Dockerfile** (`maritime create … --repo`). No existe `git push maritime main`.
+- `--public` da una URL pública **sin login**: por eso `/ask`, `/chat` y `/api/*` exigen `API_TOKEN` en producción, `/webhook/telegram` exige el secreto del webhook y `/jobs/*` exige `JOBS_TOKEN`.
 - Solo `/data` persiste (reinicios, redeploys y sleep/wake). El Dockerfile ya usa `DB_PATH=/data/radar.db`.
-- El agente **duerme** si no hay actividad y despierta en ~1 s con cualquier petición a su URL pública (webhook de Zavu, llamada de n8n). Los temporizadores internos no corren dormido, por eso el cron vive en n8n.
-- Plan Free: 3 máquinas, 1 despierta a la vez, 2 GB RAM, 5 GB SSD (la doc no dice si pide tarjeta; si te la pide, **no la actives** y avísame).
+- El agente **duerme** si no hay actividad y despierta en ~1 s con cualquier petición a su URL pública (webhook de Telegram, llamada de n8n). Los temporizadores internos no corren dormido, por eso el cron vive en n8n.
+- Plan Free: 3 máquinas, 1 despierta a la vez, 2 GB RAM, 5 GB SSD (la doc no dice si pide tarjeta).
 - Contrato de contenedores propios: `GET /health` (2xx) y `POST /chat {message, source}` → `{response}`. Ambos existen.
 
 ## Pasos
@@ -43,13 +43,11 @@ Doc consultada el 2026-10-16: https://maritime.sh/docs (CLI, `frameworks/custom`
    TAVILY_API_KEY=…
    APIFY_MODE=real
    APIFY_TOKEN=…
-   CHANNEL=zavu-telegram
-   ZAVU_MODE=real
-   ZAVU_API_KEY=…
-   ZAVU_SENDER_ID=…
-   ZAVU_WEBHOOK_SECRET=…
+   CHANNEL=telegram
+   TELEGRAM_BOT_TOKEN=…                        # el de @BotFather
+   TELEGRAM_WEBHOOK_SECRET=…                   # letras, números, _ o -
    ALLOWED_SENDERS=TU_CHAT_ID
-   PUBLIC_URL=https://TU-URL                   # la que te da Maritime; los audios salen de aquí
+   PUBLIC_URL=https://TU-URL                   # la que te da Maritime; con ella el bot registra su webhook al arrancar
    VOICE_MODE=real
    ELEVENLABS_API_KEY=…
    ELEVENLABS_VOICE_ID=…
@@ -68,15 +66,14 @@ Doc consultada el 2026-10-16: https://maritime.sh/docs (CLI, `frameworks/custom`
    curl https://TU-URL/health
    ```
 
-## Conectar Zavu y n8n a la URL pública
+## Conectar Telegram y n8n a la URL pública
 
-1. **Zavu:** Sender **Radar bot** → Add Webhook → `https://TU-URL/webhook/zavu`, eventos `message.inbound` y `conversation.new`. Copia el secreto a `ZAVU_WEBHOOK_SECRET` y recarga: `maritime env set radar ZAVU_WEBHOOK_SECRET=… --reload`.
-2. Escríbele "hola" a @radar_cesar_bot: te responde con tu ID. Ponlo en `ALLOWED_SENDERS` (`maritime env set radar ALLOWED_SENDERS=… --reload`).
-3. **n8n:** importa `n8n/*.json`, cambia `https://TU-URL-PUBLICA` por la URL de Maritime y `CAMBIA_ESTE_TOKEN` por tu `JOBS_TOKEN`, y publica cada workflow.
-4. Prueba un job a mano: `curl -X POST https://TU-URL/jobs/resumen-semanal -H "authorization: Bearer $JOBS_TOKEN"`; debe llegarte un mensaje por Telegram.
+1. **Telegram:** con `PUBLIC_URL` definida, el servidor registra solo el webhook (`/webhook/telegram`) al arrancar. Escríbele "hola" a tu bot: te responde con tu ID. Ponlo en `ALLOWED_SENDERS` (`maritime env set radar ALLOWED_SENDERS=… --reload`).
+2. **n8n:** importa `n8n/*.json`, cambia `https://TU-URL-PUBLICA` por la URL de Maritime y `CAMBIA_ESTE_TOKEN` por tu `JOBS_TOKEN`, y publica cada workflow.
+3. Prueba un job a mano: `curl -X POST https://TU-URL/jobs/resumen-semanal -H "authorization: Bearer $JOBS_TOKEN"`; debe llegarte un mensaje por Telegram.
 
 ## Riesgos conocidos
 
 - **Dormir a media respuesta:** el webhook responde 200 y el agente sigue en segundo plano; la doc dice que el proceso se congela y reanuda, así que debería terminar, pero no está probado. Si ves respuestas que no llegan, revisa `maritime logs radar` y considera el add-on always-on.
-- **1 máquina despierta a la vez en Free:** si algo excede el límite, Maritime responde 429 con reintento de 15 s; Zavu y n8n reintentan.
+- **1 máquina despierta a la vez en Free:** si algo excede el límite, Maritime responde 429 con reintento de 15 s; Telegram y n8n reintentan.
 - La base SQLite vive en `/data`: haz copia si algo importa (`maritime` ofrece API de archivos; la doc no detalla backups).

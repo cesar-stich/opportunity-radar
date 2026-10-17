@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Agente cazador de oportunidades para estudiantes (práctica para Hack the Andes)",
+  "description": "Agente que caza oportunidades (prácticas, becas, hackathones, cursos) para estudiantes y avisa por Telegram",
   "engines": {
     "node": ">=22.13"
   },

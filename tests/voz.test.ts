@@ -1,16 +1,10 @@
-import { mkdtempSync, rmSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { crearApp } from '../src/app';
 import { crearAgente } from '../src/agent/agent';
-import { ZavuChannel } from '../src/channels/zavu';
 import { leerEnv } from '../src/config';
 import type { AudioEntrante, Channel, MensajeEntrante } from '../src/interfaces';
 import { crearMensajeria } from '../src/mensajeria';
 import { resumenSemanal } from '../src/jobs';
 import { textoParaVoz } from '../src/util/voz';
-import { AlmacenAudio } from '../src/voice/almacen';
 import { ElevenLabsVoice, MockVoice } from '../src/voice/elevenlabs';
 import { depsDePrueba } from './helpers';
 
@@ -60,65 +54,6 @@ describe('ElevenLabs (sin red)', () => {
     await expect(new ElevenLabsVoice('k').sintetizar('x')).rejects.toThrow(/ELEVENLABS_VOICE_ID/);
     vi.stubGlobal('fetch', vi.fn(async () => new Response('quota', { status: 429 })));
     await expect(new ElevenLabsVoice('k', 'v').sintetizar('x')).rejects.toThrow(/sin créditos/);
-  });
-});
-
-describe('AlmacenAudio', () => {
-  const dir = mkdtempSync(join(tmpdir(), 'radar-test-audio-'));
-  afterEach(() => rmSync(dir, { recursive: true, force: true }));
-
-  it('guarda con nombre aleatorio, devuelve la URL pública y solo sirve nombres válidos', () => {
-    const a = new AlmacenAudio(dir, 'https://radar.example.app/');
-    const url = a.guardar(bytes('mp3'), 'audio/mpeg');
-    expect(url).toMatch(/^https:\/\/radar\.example\.app\/audio\/[a-f0-9]{32}\.mp3$/);
-    const archivo = url.split('/').pop()!;
-    expect(a.leer(archivo)?.mime).toBe('audio/mpeg');
-    expect(a.leer('../../.env')).toBeNull();
-    expect(a.leer('0'.repeat(32) + '.mp3')).toBeNull();
-  });
-  it('sin PUBLIC_URL no guarda', () => {
-    expect(() => new AlmacenAudio(dir).guardar(bytes('x'), 'audio/mpeg')).toThrow(/PUBLIC_URL/);
-  });
-});
-
-describe('Zavu: audio (sin red)', () => {
-  afterEach(() => vi.unstubAllGlobals());
-  const dir = mkdtempSync(join(tmpdir(), 'radar-test-audio2-'));
-  const canal = () => new ZavuChannel('zavu-telegram', 'zv_test_x', 's', 'snd_1', new AlmacenAudio(dir, 'https://radar.example.app'));
-
-  it('envía el audio como URL pública (messageType audio + content.mediaUrl)', async () => {
-    const f = vi.fn(async () => new Response('{}', { status: 202 }));
-    vi.stubGlobal('fetch', f);
-    await canal().enviarAudio('123', bytes('mp3'), 'audio/mpeg');
-    const cuerpo = JSON.parse(String((f.mock.calls[0] as unknown as [string, RequestInit])[1].body));
-    expect(cuerpo).toMatchObject({ to: '123', channel: 'telegram', messageType: 'audio' });
-    expect(cuerpo.content.mediaUrl).toMatch(/^https:\/\/radar\.example\.app\/audio\/[a-f0-9]{32}\.mp3$/);
-  });
-
-  it('baja el audio entrante con la URL del webhook, o con GET /v1/messages/{id} si no vino', async () => {
-    const f = vi.fn(async (url: string) => {
-      if (url.includes('/v1/messages/')) return Response.json({ message: { content: { mediaUrl: 'https://cdn.example/voz.ogg', mimeType: 'audio/ogg' } } });
-      return new Response(bytes('ogg-bytes'), { headers: { 'content-type': 'audio/ogg' } });
-    });
-    vi.stubGlobal('fetch', f);
-    const a1 = await canal().obtenerAudio({ url: 'https://cdn.example/directo.ogg', mime: 'audio/ogg' });
-    expect(new TextDecoder().decode(a1.datos)).toBe('ogg-bytes');
-    const a2 = await canal().obtenerAudio({ mensajeId: 'msg_9' });
-    expect(a2.mime).toBe('audio/ogg');
-    expect(String((f.mock.calls.at(-2) as unknown as [string])[0])).toContain('/v1/messages/msg_9');
-  });
-
-  it('reintenta con la llave de Zavu si la URL exige autenticación', async () => {
-    const f = vi.fn(async (_u: string, init?: RequestInit) =>
-      (init?.headers as Record<string, string> | undefined)?.authorization ? new Response(bytes('ok')) : new Response('no', { status: 403 }),
-    );
-    vi.stubGlobal('fetch', f);
-    expect(new TextDecoder().decode((await canal().obtenerAudio({ url: 'https://cdn.example/x.ogg', mime: 'audio/ogg' })).datos)).toBe('ok');
-  });
-
-  it('sin URL en el webhook ni en el mensaje, explica qué falta', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ message: { content: {} } })));
-    await expect(canal().obtenerAudio({ mensajeId: 'm' })).rejects.toThrow(/no incluyó una URL/);
   });
 });
 
@@ -184,7 +119,7 @@ describe('nota de voz → agente → respuesta', () => {
   });
 });
 
-describe('resumen semanal en audio y /audio', () => {
+describe('resumen semanal en audio', () => {
   it('con REPLY_AS_VOICE manda texto y audio; si el audio falla, avisa pero el job sigue ok', async () => {
     const { canal, enviados } = canalFalso();
     const env = leerEnv({ ALLOWED_SENDERS: '1', REPLY_AS_VOICE: 'true' });
@@ -198,17 +133,5 @@ describe('resumen semanal en audio y /audio', () => {
     const r2 = await resumenSemanal(deps, agente);
     expect(r2.ok).toBe(true);
     expect(r2.errores?.[0]).toMatch(/audio: sin PUBLIC_URL/);
-  });
-
-  it('GET /audio/:archivo sirve solo lo guardado', async () => {
-    const dir = mkdtempSync(join(tmpdir(), 'radar-test-audio3-'));
-    const audio = new AlmacenAudio(dir, 'https://x.app');
-    const app = crearApp(depsDePrueba({ audio }));
-    const archivo = audio.guardar(bytes('datos'), 'audio/mpeg').split('/').pop()!;
-    const ok = await app.request(`/audio/${archivo}`);
-    expect(ok.status).toBe(200);
-    expect(ok.headers.get('content-type')).toBe('audio/mpeg');
-    expect((await app.request('/audio/nada.mp3')).status).toBe(404);
-    rmSync(dir, { recursive: true, force: true });
   });
 });

@@ -6,7 +6,7 @@ Panel web **de solo lectura** (kanban) que muestra lo que encontró el agente. L
 
 1. En tu servidor (Maritime) define `PANEL_TOKEN` con un valor largo y aleatorio (`openssl rand -hex 24`). Es **distinto** de `API_TOKEN`: solo permite leer `/api/*`, así que si se filtra desde el navegador no pueden conversar con tu agente ni gastar tu cuota. Aun así, quien tenga la URL del panel verá tus oportunidades y borradores: no la compartas.
 2. En Lovable, crea el proyecto y pega el prompt de abajo. Cuando Lovable pida las variables (o en Project settings → Environment variables) pon:
-   - `VITE_API_URL` = la URL pública de tu servidor, sin `/` final (ej. `https://radar-cesar.maritime.app`).
+   - `VITE_API_URL` = la URL pública de tu servidor, sin `/` final (ej. `https://tu-agente.maritime.app`).
    - `VITE_PANEL_TOKEN` = tu `PANEL_TOKEN`.
 3. Prueba antes: `curl "https://TU-URL/api/estadisticas?token=$PANEL_TOKEN"` debe devolver JSON. Con Maritime el panel manda el token en la URL (`?token=`): su URL pública no reenvía `Authorization` y su borde rechaza el preflight CORS de otros orígenes, así que ni `Authorization` ni cabeceras propias sirven desde un navegador (probado). Para scripts como n8n sí vale la cabecera `X-Radar-Token`.
 

@@ -12,19 +12,15 @@ const modo = z.enum(['mock', 'real']).default('mock');
 const EnvSchema = z.object({
   PORT: z.coerce.number().default(3000),
   DB_PATH: z.string().default('data/radar.db'),
-  LLM_PROVIDER: z.enum(['mock', 'gemini', 'groq', 'anthropic']).default('mock'),
+  LLM_PROVIDER: z.enum(['mock', 'gemini', 'groq']).default('mock'),
   LLM_MODEL: z.string().optional(),
   GEMINI_API_KEY: z.string().optional(),
   GROQ_API_KEY: z.string().optional(),
-  ANTHROPIC_API_KEY: z.string().optional(),
-  CHANNEL: z.enum(['mock', 'zavu-whatsapp', 'zavu-telegram', 'telegram']).default('mock'),
+  CHANNEL: z.enum(['mock', 'telegram']).default('mock'),
   TELEGRAM_BOT_TOKEN: z.string().optional(),
   // Secreto del webhook de Telegram (solo A-Z, a-z, 0-9, _ y -; 1 a 256 caracteres).
   TELEGRAM_WEBHOOK_SECRET: z.string().regex(/^[A-Za-z0-9_-]{1,256}$/).optional(),
-  ZAVU_API_KEY: z.string().optional(),
-  ZAVU_WEBHOOK_SECRET: z.string().optional(),
-  ZAVU_SENDER_ID: z.string().optional(),
-  // IDs que pueden hablar con el agente (chat id de Telegram o teléfono E.164), separados por comas.
+  // IDs que pueden hablar con el agente (chat id de Telegram), separados por comas.
   ALLOWED_SENDERS: z
     .string()
     .default('')
@@ -35,7 +31,7 @@ const EnvSchema = z.object({
   ATOMICMEMORY_API_KEY: z.string().optional(),
   TAVILY_API_KEY: z.string().optional(),
   APIFY_TOKEN: z.string().optional(),
-  // URL pública del servidor (Maritime o túnel): Zavu necesita una URL para enviar audios.
+  // URL pública del servidor (Maritime o túnel): con ella se registra el webhook de Telegram al arrancar.
   PUBLIC_URL: z.string().optional(),
   JOBS_TOKEN: z.string().optional(),
   // Protege /ask, /chat y /api/*. En producción (NODE_ENV=production) es obligatorio: la URL pública no tiene login.
@@ -46,7 +42,6 @@ const EnvSchema = z.object({
   MATCH_TOKEN: z.string().optional(),
   NODE_ENV: z.string().default('development'),
   NOTIFY_MIN_SCORE: z.coerce.number().default(70),
-  ZAVU_MODE: modo,
   VOICE_MODE: modo,
   MEMORY_MODE: modo,
   TAVILY_MODE: modo,

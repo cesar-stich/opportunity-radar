@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { TelegramChannel } from '../src/channels/telegram';
-import { FirmaInvalida } from '../src/channels/zavu';
+import { crearApp } from '../src/app';
+import { leerEnv } from '../src/config';
+import { aTextoPlano } from '../src/util/formato';
+import { depsDePrueba } from './helpers';
+import { FirmaInvalida, partirTexto, TelegramChannel } from '../src/channels/telegram';
 
 const SECRETO = 'secreto_de_prueba-1';
 const canal = () => new TelegramChannel('123:TOKEN', SECRETO);
@@ -77,5 +80,74 @@ describe('TelegramChannel envío y descarga', () => {
   it('un error de Telegram se propaga con su descripción', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ok: false, description: 'chat not found' }, { status: 400 })));
     await expect(canal().enviarTexto('1', 'x')).rejects.toThrow(/chat not found/);
+  });
+});
+
+describe('utilidades de texto', () => {
+  it('partirTexto respeta el máximo y no pierde contenido', () => {
+    const texto = Array.from({ length: 300 }, (_, i) => `línea ${i}`).join('\n');
+    const trozos = partirTexto(texto, 500);
+    expect(trozos.every((t) => t.length <= 500)).toBe(true);
+    expect(trozos.join('\n').replace(/\s+/g, ' ')).toBe(texto.replace(/\s+/g, ' '));
+  });
+  it('aTextoPlano convierte viñetas y enlaces', () => {
+    expect(aTextoPlano('* uno\n- dos\n**[68/100]** [Ver](https://a.pe)')).toBe('• uno\n• dos\n[68/100] Ver: https://a.pe');
+  });
+});
+
+// El flujo completo: webhook con secreto → agente → respuesta enviada por Telegram.
+describe('webhook /webhook/telegram', () => {
+  function montar(permitidos = '8859077645') {
+    const env = leerEnv({ JOBS_TOKEN: 'secreto', ALLOWED_SENDERS: permitidos });
+    const enviados: { chat_id: string; text: string }[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (_url: string, init: RequestInit) => {
+        enviados.push(JSON.parse(String(init.body)));
+        return Response.json({ ok: true, result: {} });
+      }),
+    );
+    return { app: crearApp(depsDePrueba({ env, canal: canal() })), enviados };
+  }
+  const enviar = (app: ReturnType<typeof crearApp>, message: Record<string, unknown>, secreto: string | null = SECRETO) => app.fetch(update(message, secreto));
+
+  it('un mensaje del dueño llega al agente y la respuesta sale por Telegram', async () => {
+    const { app, enviados } = montar();
+    expect((await enviar(app, { text: '¿qué hay para becas?' })).status).toBe(200);
+    await app.mensajeria.inactivo();
+    expect(enviados).toHaveLength(1);
+    expect(enviados[0].chat_id).toBe('8859077645');
+    expect(enviados[0].text).toMatch(/\[\d+\/100\]/);
+  });
+
+  it('secreto inválido: 401 y el agente no se entera', async () => {
+    const { app, enviados } = montar();
+    expect((await enviar(app, { text: 'hola' }, 'otro')).status).toBe(401);
+    expect((await enviar(app, { text: 'hola' }, null)).status).toBe(401);
+    await app.mensajeria.inactivo();
+    expect(enviados).toHaveLength(0);
+  });
+
+  it('un remitente desconocido no usa el agente', async () => {
+    const { app, enviados } = montar('999');
+    await enviar(app, { text: 'busca prácticas en Lima' });
+    await app.mensajeria.inactivo();
+    expect(enviados).toHaveLength(1);
+    expect(enviados[0].text).toBe('Este agente es privado.');
+  });
+
+  it('sin dueño configurado, el bot le dice su ID', async () => {
+    const { app, enviados } = montar('');
+    await enviar(app, { text: 'hola' });
+    await app.mensajeria.inactivo();
+    expect(enviados[0].text).toMatch(/Tu ID es 8859077645.*ALLOWED_SENDERS/);
+  });
+
+  it('si Telegram falla al responder, el servidor sigue vivo', async () => {
+    const { app } = montar();
+    vi.stubGlobal('fetch', vi.fn(async () => Response.json({ ok: false, description: 'boom' }, { status: 500 })));
+    vi.spyOn(console, 'error').mockImplementation(() => {});
+    expect((await enviar(app, { text: 'hola' })).status).toBe(200);
+    await expect(app.mensajeria.inactivo()).resolves.toBeUndefined();
   });
 });

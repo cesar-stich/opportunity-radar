@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { crearApp } from '../src/app';
 import { crearAgente } from '../src/agent/agent';
-import { MockChannel } from '../src/channels/zavu';
+import { MockChannel } from '../src/channels/mock';
 import { leerEnv } from '../src/config';
 import * as repo from '../src/db/repo';
 import type { SearchTool } from '../src/interfaces';

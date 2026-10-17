@@ -1,5 +1,5 @@
 import { MockLLM } from '../src/agent/providers/mock';
-import { MockChannel } from '../src/channels/zavu';
+import { MockChannel } from '../src/channels/mock';
 import { leerEnv } from '../src/config';
 import { abrirDb } from '../src/db/index';
 import { sembrar } from '../src/db/seed';

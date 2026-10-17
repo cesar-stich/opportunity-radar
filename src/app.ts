@@ -5,14 +5,14 @@ import { crearAgente } from './agent/agent';
 import { puntuar } from './agent/scoring';
 import * as repo from './db/repo';
 import type { Deps } from './deps';
-import { FirmaInvalida } from './channels/zavu';
+import { FirmaInvalida } from './channels/telegram';
 import { JOBS, type NombreJob } from './jobs';
 import { leerEntradaMatch } from './match';
 import { crearMensajeria } from './mensajeria';
 import { tokenValido } from './util/token';
 import { ESTADOS, TIPOS } from './types';
 
-// Servidor del agente: el cerebro vive aquí. Zavu solo transporta, n8n solo dispara, Maritime solo aloja.
+// Servidor del agente: el cerebro vive aquí. Telegram solo transporta, n8n solo dispara, Maritime solo aloja.
 
 const AskBody = z.object({ text: z.string().min(1), usuario: z.string().default('local') });
 const FiltroApi = z.object({ estado: z.enum(ESTADOS).optional(), tipo: z.enum(TIPOS).optional() });
@@ -68,7 +68,7 @@ export function crearApp(deps: Deps) {
   app.use('/ask', privado);
   app.use('/chat', privado);
 
-  // Conversación directa por HTTP (lo mismo que llegará por WhatsApp/Telegram).
+  // Conversación directa por HTTP (lo mismo que llega por Telegram).
   app.post('/ask', async (c) => {
     const body = await leerJson(c, AskBody);
     if (!body.ok) return body.res;
@@ -90,13 +90,6 @@ export function crearApp(deps: Deps) {
       console.error(e);
       return c.json({ error: (e as Error).message }, 502);
     }
-  });
-
-  // Audios que Zavu descarga para enviarlos por WhatsApp/Telegram. Público a propósito: el nombre es aleatorio de 128 bits.
-  app.get('/audio/:archivo', (c) => {
-    const a = deps.audio.leer(c.req.param('archivo'));
-    if (!a) return c.json({ error: 'No existe' }, 404);
-    return c.body(new Uint8Array(a.datos), 200, { 'content-type': a.mime, 'cache-control': 'private, max-age=3600' });
   });
 
   // Servicio público de matching (Qatom): solo perfil + oportunidad, sin datos privados ni feedback.
@@ -142,8 +135,7 @@ export function crearApp(deps: Deps) {
     }
   });
 
-  // Mensajes entrantes (WhatsApp o Telegram vía Zavu). Se contesta 200 al instante y se atiende en segundo plano.
-  // /webhook/telegram es el de Telegram directo (CHANNEL=telegram); mismo manejo, otro proveedor.
+  // Mensajes entrantes de Telegram. Se contesta 200 al instante y se atiende en segundo plano.
   const webhook = async (c: Context) => {
     try {
       const msg = await deps.canal.recibir(c.req.raw);
@@ -155,7 +147,6 @@ export function crearApp(deps: Deps) {
       return c.json({ ok: true }); // 200 para que el proveedor no reintente un evento que no podemos leer
     }
   };
-  app.post('/webhook/zavu', webhook);
   app.post('/webhook/telegram', webhook);
 
   return Object.assign(app, { mensajeria });

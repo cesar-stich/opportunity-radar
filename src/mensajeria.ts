@@ -2,9 +2,9 @@ import type { Agente } from './agent/agent';
 import type { Channel, MensajeEntrante, Voice } from './interfaces';
 import { textoParaVoz } from './util/voz';
 
-// Une el canal (Zavu) con el agente: mensaje entrante → agente → respuesta por el mismo canal.
-// Zavu exige responder al webhook en <30 s y el LLM puede tardar más, así que el webhook contesta 200 al
-// instante y esto corre en segundo plano. Zavu reintenta las entregas, por eso también deduplicamos.
+// Une el canal (Telegram) con el agente: mensaje entrante → agente → respuesta por el mismo canal.
+// El LLM puede tardar más de lo que Telegram espera, así que el webhook contesta 200 al instante y esto corre
+// en segundo plano. Telegram reintenta las entregas fallidas, por eso también deduplicamos.
 // Notas de voz: audio → ElevenLabs (STT) → agente → (si REPLY_AS_VOICE) ElevenLabs (TTS) → audio. Si algo de la
 // voz falla, siempre queda la respuesta por texto.
 
