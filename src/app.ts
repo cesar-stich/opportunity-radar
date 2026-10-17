@@ -43,15 +43,21 @@ export function crearApp(deps: Deps) {
     }),
   );
 
+  // El token llega en `Authorization: Bearer …` o en `X-Radar-Token: …`. La segunda existe porque la URL pública de
+  // Maritime no deja pasar `Authorization` hasta el contenedor (probado: 401 con el token correcto).
+  const credencial = (c: Context, token: string | undefined) => {
+    const propio = c.req.header('x-radar-token');
+    return tokenValido(c.req.header('authorization'), token) || (!!propio && tokenValido(`Bearer ${propio}`, token));
+  };
+
   // /ask, /chat y /api/* son privados. En local (sin API_TOKEN) quedan abiertos; en producción sin token quedan cerrados.
   // El panel web usa PANEL_TOKEN, que solo vale para leer (GET) /api/*.
   const privado = async (c: Context, next: () => Promise<void>) => {
     const { API_TOKEN, PANEL_TOKEN, NODE_ENV } = deps.env;
     if (!API_TOKEN && !PANEL_TOKEN && NODE_ENV !== 'production') return next();
-    const auth = c.req.header('authorization');
-    if (tokenValido(auth, API_TOKEN)) return next();
+    if (credencial(c, API_TOKEN)) return next();
     const soloLectura = c.req.method === 'GET' && c.req.path.startsWith('/api/');
-    if (soloLectura && tokenValido(auth, PANEL_TOKEN)) return next();
+    if (soloLectura && credencial(c, PANEL_TOKEN)) return next();
     if (!API_TOKEN && NODE_ENV === 'production') return c.json({ error: 'API_TOKEN no configurado' }, 401);
     return c.json({ error: 'No autorizado' }, 401);
   };
@@ -93,7 +99,7 @@ export function crearApp(deps: Deps) {
   // Con MATCH_TOKEN, Qatom manda ese Authorization (se configura como "Sensitive" en el ítem); sin él, 404 como recomienda su guía.
   // Acepta POST (JSON) o GET (query) y devuelve el id de transacción de Qatom si lo manda.
   const match = async (c: Context) => {
-    if (deps.env.MATCH_TOKEN && !tokenValido(c.req.header('authorization'), deps.env.MATCH_TOKEN)) return c.json({ error: 'No encontrado' }, 404);
+    if (deps.env.MATCH_TOKEN && !credencial(c, deps.env.MATCH_TOKEN)) return c.json({ error: 'No encontrado' }, 404);
     const datos = c.req.method === 'GET' ? c.req.query() : await c.req.json().catch(() => undefined);
     const entrada = leerEntradaMatch(datos);
     const transaccion = c.req.header('x-qatom-transaction-id');
@@ -117,8 +123,7 @@ export function crearApp(deps: Deps) {
 
   // Disparadores de n8n: protegidos por JOBS_TOKEN.
   app.use('/jobs/*', async (c, next) => {
-    const token = deps.env.JOBS_TOKEN;
-    if (!tokenValido(c.req.header('authorization'), token)) return c.json({ error: 'No autorizado' }, 401);
+    if (!credencial(c, deps.env.JOBS_TOKEN)) return c.json({ error: 'No autorizado' }, 401);
     await next();
   });
   app.post('/jobs/:job', async (c) => {

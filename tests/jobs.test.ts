@@ -119,6 +119,16 @@ describe('rutas /jobs/*', () => {
     expect((await app.fetch(post('/jobs/recordar-plazos', 'secreto'))).status).toBe(200);
   });
 
+  it('aceptan el token también en X-Radar-Token (Maritime no reenvía Authorization)', async () => {
+    const { deps } = montar();
+    const app = crearApp(deps);
+    const con = (cabeceras: Record<string, string>) => new Request('http://local/jobs/recordar-plazos', { method: 'POST', headers: cabeceras });
+    expect((await app.fetch(con({ 'x-radar-token': 'secreto' }))).status).toBe(200);
+    expect((await app.fetch(con({ 'x-radar-token': 'otro' }))).status).toBe(401);
+    // Si el proxy pone su propio Authorization, el token propio sigue valiendo.
+    expect((await app.fetch(con({ authorization: 'Bearer del-proxy', 'x-radar-token': 'secreto' }))).status).toBe(200);
+  });
+
   it('responde 409 si no hay a quién avisar', async () => {
     const { deps } = montar({});
     expect((await crearApp(deps).fetch(post('/jobs/escanear', 'secreto'))).status).toBe(409);

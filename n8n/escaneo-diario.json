@@ -29,8 +29,8 @@
         "headerParameters": {
           "parameters": [
             {
-              "name": "Authorization",
-              "value": "Bearer CAMBIA_ESTE_TOKEN"
+              "name": "X-Radar-Token",
+              "value": "CAMBIA_ESTE_TOKEN"
             }
           ]
         },
